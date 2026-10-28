@@ -1,1443 +1,597 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Reader: text to speech</title>
-<meta name="description" content="Paste text or open a PDF, EPUB, Word, Markdown or web file and hear it read aloud with natural voices that run on your device.">
-<meta name="theme-color" content="#0a0f0d">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<style>
-:root{
-  --bg:#0a0f0d; --bg2:#0e1512; --panel:#111a16; --panel2:#16221d; --line:#1f2f28;
-  --ink:#e6efe9; --text:#d5dfd9; --mute:#8aa095;
-  --accent:#3ee6a0; --accent-ink:#04140d; --accent-dim:#2bb07a;
-  --hl:rgba(62,230,160,.17); --hl2:rgba(62,230,160,.08);
-  --danger:#ff7676; --warn:#f0c15a;
-  --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
-  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  --fs:1.2rem;
-  --dock-h:150px;
-  color-scheme:dark;
-}
-:root[data-theme="light"]{
-  --bg:#f3f6f4; --bg2:#eaf0ec; --panel:#ffffff; --panel2:#f1f5f2; --line:#d6e0da;
-  --ink:#10201a; --text:#1b2b24; --mute:#587064;
-  --accent:#0b9a62; --accent-ink:#ffffff; --accent-dim:#0b7a50;
-  --hl:rgba(11,154,98,.16); --hl2:rgba(11,154,98,.07);
-  --danger:#c93a3a; --warn:#9a6b00;
-  color-scheme:light;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-[hidden]{display:none!important}
-html{-webkit-text-size-adjust:100%}
-body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;min-height:100dvh;line-height:1.5;-webkit-tap-highlight-color:transparent}
-button,input,select,textarea{font:inherit;color:inherit}
-button{cursor:pointer;background:none;border:0}
-svg{width:1.25em;height:1.25em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
-svg .f{fill:currentColor;stroke:none}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Natural Neural Speech Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090a0f;
+      --surface: #12151e;
+      --surface-border: #1e2230;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --highlight: rgba(59, 130, 246, 0.25);
+      --highlight-border: #3b82f6;
+      --radius: 10px;
+    }
 
-/* top bar */
-.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px max(16px,env(safe-area-inset-left));background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:center;gap:10px;font-weight:650;letter-spacing:-.01em;color:var(--ink);padding:4px 6px 4px 0}
-.brand svg{width:30px;height:30px;stroke:none}
-.top-actions{display:flex;gap:2px}
-.icon{display:grid;place-items:center;width:42px;height:42px;border-radius:12px;color:var(--mute);transition:background .15s,color .15s}
-.icon:hover{background:var(--panel2);color:var(--ink)}
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.5;
+      padding: 24px 16px;
+      display: flex;
+      justify-content: center;
+    }
 
-main{max-width:760px;margin:0 auto;padding:0 max(16px,env(safe-area-inset-left)) 40px}
+    .container {
+      width: 100%;
+      max-width: 900px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
 
-/* home */
-.hero{padding:44px 0 26px}
-.hero h1{font-family:var(--serif);font-weight:700;font-size:clamp(2.4rem,9vw,3.6rem);line-height:1.02;letter-spacing:-.025em;color:var(--ink)}
-.hero p{margin-top:14px;max-width:46ch;color:var(--mute);font-size:1.05rem}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px}
-.nat{display:grid;gap:12px;margin-bottom:16px;border-color:color-mix(in srgb,var(--accent) 35%,var(--line))}
-.nat h2{font-size:1.02rem;color:var(--ink)}
-.nat p{color:var(--mute);font-size:.94rem}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 18px;border-radius:12px;font-weight:600;background:var(--panel2);border:1px solid var(--line);color:var(--ink);transition:transform .12s,background .15s,border-color .15s}
-.btn:hover{border-color:var(--accent)}
-.btn:active{transform:scale(.98)}
-.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.btn.pri:hover{filter:brightness(1.08)}
-.btn.sm{padding:7px 12px;font-size:.9rem;border-radius:10px}
-.btn[disabled]{opacity:.5;pointer-events:none}
-.bar{height:8px;border-radius:99px;background:var(--panel2);overflow:hidden;border:1px solid var(--line)}
-.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
-.drop{display:grid;justify-items:center;gap:8px;text-align:center;padding:34px 18px;border:2px dashed var(--line);border-radius:18px;cursor:pointer;transition:border-color .15s,background .15s;background:var(--panel)}
-.drop:hover,.drop.over{border-color:var(--accent);background:var(--hl2)}
-.drop svg{width:34px;height:34px;color:var(--accent)}
-.drop strong{color:var(--ink);font-size:1.1rem}
-.drop span{color:var(--mute);font-size:.92rem}
-.or{display:flex;align-items:center;gap:12px;margin:18px 0;color:var(--mute);font-size:.9rem}
-.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
-textarea#paste{width:100%;min-height:150px;resize:vertical;padding:14px 16px;border-radius:14px;border:1px solid var(--line);background:var(--panel);line-height:1.6;font-family:var(--serif);font-size:1.05rem}
-textarea#paste:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--hl)}
-.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
-.row .grow{flex:1}
-.stat{color:var(--mute);font-size:.88rem}
-.recent{margin-top:34px}
-.recent h2{font-size:1rem;color:var(--ink);margin-bottom:10px}
-.recent ul{list-style:none;display:grid;gap:8px}
-.rec{display:flex;align-items:stretch;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
-.rec>button.open{flex:1;text-align:left;padding:12px 14px;display:grid;gap:6px;min-width:0}
-.rec>button.open:hover{background:var(--hl2)}
-.rec b{color:var(--ink);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rec small{color:var(--mute)}
-.rec .bar{height:4px}
-.rec>button.del{width:46px;color:var(--mute);display:grid;place-items:center}
-.rec>button.del:hover{color:var(--danger);background:var(--panel2)}
+    header {
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    header p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-top: 4px;
+    }
 
-/* reader */
-.doc-head{padding:30px 0 6px}
-.doc-head h1{font-family:var(--serif);font-size:clamp(1.7rem,6vw,2.4rem);line-height:1.12;letter-spacing:-.02em;color:var(--ink);overflow-wrap:anywhere}
-.doc-head p{color:var(--mute);margin-top:8px;font-size:.92rem}
-.page{font-family:var(--serif);font-size:var(--fs);line-height:1.78;color:var(--text);padding:18px 0 calc(var(--dock-h) + 50px);max-width:66ch;margin:0;overflow-wrap:break-word;hyphens:auto}
-.page p,.page ul,.page ol,.page blockquote,.page pre{margin:0 0 1.05em}
-.page h2,.page h3,.page h4,.page h5,.page h6{font-weight:700;color:var(--ink);line-height:1.22;margin:1.6em 0 .55em;letter-spacing:-.01em}
-.page h2{font-size:1.65em}.page h3{font-size:1.35em}.page h4{font-size:1.15em}.page h5,.page h6{font-size:1em}
-.page ul,.page ol{padding-left:1.4em}
-.page li{margin-bottom:.3em}
-.page blockquote{border-left:3px solid var(--accent-dim);padding-left:1em;color:var(--mute)}
-.page pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.82em;line-height:1.5;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto;white-space:pre;color:var(--mute);hyphens:none}
-.page hr{border:0;border-top:1px solid var(--line);margin:1.8em 0}
-.page .pg{font-family:var(--sans);font-size:.72rem;color:var(--mute);text-align:center;margin:1.8em 0 1.2em;display:flex;align-items:center;gap:10px}
-.page .pg::before,.page .pg::after{content:"";flex:1;height:1px;background:var(--line)}
-.page .tr{font-family:var(--sans);font-size:.92em;border-bottom:1px solid var(--line);padding-bottom:.5em}
-.s{cursor:pointer;border-radius:.3em;transition:background .15s}
-.s:hover{background:var(--hl2)}
-.s.on{background:var(--hl);box-shadow:0 0 0 .1em var(--hl);-webkit-box-decoration-break:clone;box-decoration-break:clone}
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
 
-/* dock */
-.dock{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;justify-content:center;padding:0 8px;pointer-events:none}
-.dock-in{pointer-events:auto;width:100%;max-width:640px;background:color-mix(in srgb,var(--panel) 92%,transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--line);border-bottom:0;border-radius:22px 22px 0 0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(0,0,0,.28)}
-.seek input{width:100%;display:block}
-.seek-meta{display:flex;justify-content:space-between;gap:10px;font-size:.78rem;color:var(--mute);margin-top:2px;font-variant-numeric:tabular-nums}
-#statusTxt{flex:1;text-align:center;color:var(--accent);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.ctrls{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
-.chip{min-width:74px;max-width:34%;padding:8px 12px;border-radius:99px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:.88rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;transition:border-color .15s}
-.chip:hover{border-color:var(--accent)}
-.transport{display:flex;align-items:center;gap:6px}
-.transport .icon{width:48px;height:48px;color:var(--ink)}
-.play{--lvl:0;position:relative;width:64px;height:64px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:var(--accent-ink);transition:transform .12s}
-.play:active{transform:scale(.95)}
-.play svg{width:28px;height:28px;position:relative}
-.play::before{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--accent);opacity:calc(.15 + var(--lvl)*.85);transform:scale(calc(1 + var(--lvl)*.22));transition:transform .08s linear,opacity .08s linear}
-.play.buffering svg{opacity:.35}
-.play.buffering::after{content:"";position:absolute;width:26px;height:26px;border-radius:50%;border:3px solid var(--accent-ink);border-top-color:transparent;animation:spin .8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
 
-/* ranges */
-input[type=range]{-webkit-appearance:none;appearance:none;height:26px;background:transparent;cursor:pointer;--p:0%}
-input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:99px;background:linear-gradient(90deg,var(--accent) var(--p),var(--line) var(--p))}
-input[type=range]::-moz-range-track{height:6px;border-radius:99px;background:var(--line)}
-input[type=range]::-moz-range-progress{height:6px;border-radius:99px;background:var(--accent)}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;margin-top:-7px;border-radius:50%;background:var(--ink);border:3px solid var(--accent)}
-input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--ink);border:3px solid var(--accent)}
+    textarea {
+      width: 100%;
+      height: 120px;
+      background: #0d0f17;
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.9rem;
+      padding: 12px;
+      resize: vertical;
+      outline: none;
+    }
+    textarea:focus { border-color: var(--accent); }
 
-/* dialogs */
-dialog{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:20px;padding:0;width:min(560px,calc(100vw - 16px));max-height:min(86dvh,820px);margin:auto;overflow:hidden}
-dialog[open]{display:flex;flex-direction:column}
-dialog::backdrop{background:rgba(0,0,0,.55);backdrop-filter:blur(3px)}
-.dh{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line)}
-.dh h2{font-size:1.1rem;color:var(--ink)}
-.db{padding:6px 18px 22px;overflow-y:auto;-webkit-overflow-scrolling:touch}
-.grp{padding:16px 0;border-bottom:1px solid var(--line)}
-.grp:last-child{border-bottom:0}
-.grp>h3{font-size:.95rem;color:var(--ink);margin-bottom:10px}
-.hint{color:var(--mute);font-size:.86rem;margin-top:8px}
-.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:3px;margin-bottom:12px}
-.seg button{padding:9px 10px;border-radius:9px;color:var(--mute);font-weight:600}
-.seg button[aria-checked=true]{background:var(--accent);color:var(--accent-ink)}
-select,.field{width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--ink)}
-.line{display:flex;align-items:center;gap:12px;margin-bottom:10px}
-.line label{min-width:64px;color:var(--mute);font-size:.92rem}
-.line input[type=range]{flex:1}
-.line output{min-width:44px;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
-.chk{display:flex;gap:10px;align-items:flex-start;padding:6px 0;cursor:pointer}
-.chk input{margin-top:5px;accent-color:var(--accent);width:17px;height:17px}
-.chk span small{display:block;color:var(--mute)}
-textarea.field{min-height:92px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88rem;resize:vertical}
-.toc{list-style:none;display:grid;gap:2px}
-.toc button{width:100%;text-align:left;padding:10px 12px;border-radius:10px;color:var(--text);font-family:var(--serif);font-size:1.02rem}
-.toc button:hover{background:var(--hl2)}
-.toc .l3{padding-left:28px;font-size:.95rem;color:var(--mute)}
-.toc .cur{color:var(--accent);font-weight:700}
-.vgrid{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+    .drop-zone {
+      border: 2px dashed var(--surface-border);
+      border-radius: 8px;
+      padding: 24px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background-color 0.2s;
+    }
+    .drop-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(59, 130, 246, 0.05);
+    }
+    .drop-zone p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
 
-/* overlays */
-.busy{position:fixed;inset:0;z-index:60;display:grid;place-content:center;justify-items:center;gap:14px;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(6px)}
-.spin{width:38px;height:38px;border-radius:50%;border:4px solid var(--line);border-top-color:var(--accent);animation:spin .8s linear infinite}
-.toast{position:fixed;left:50%;bottom:calc(var(--dock-h) + 14px);transform:translate(-50%,12px);z-index:70;max-width:min(92vw,520px);padding:11px 16px;border-radius:14px;background:var(--ink);color:var(--bg);font-size:.92rem;font-weight:500;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
-.toast.show{opacity:1;transform:translate(-50%,0)}
-.toast.err{background:var(--danger);color:#fff}
-body.nodock .toast{bottom:24px}
-@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}.play::before{transition:none}}
-@media (max-width:480px){.chip{min-width:64px;padding:8px 10px}.transport .icon{width:44px}}
-</style>
+    .content-viewer {
+      background: #0d0f17;
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      min-height: 140px;
+      max-height: 280px;
+      overflow-y: auto;
+      padding: 16px;
+      font-size: 0.95rem;
+      line-height: 1.8;
+    }
+
+    .sentence {
+      padding: 2px 4px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.15s;
+    }
+    .sentence:hover { background: rgba(255, 255, 255, 0.05); }
+    .sentence.active {
+      background: var(--highlight);
+      border-bottom: 2px solid var(--highlight-border);
+      color: #fff;
+    }
+    .sentence.buffered {
+      border-left: 2px solid rgba(59, 130, 246, 0.4);
+    }
+
+    .controls-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+
+    label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      display: block;
+    }
+
+    select, input[type="range"] {
+      width: 100%;
+      background: #0d0f17;
+      border: 1px solid var(--surface-border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+    select:focus { border-color: var(--accent); }
+
+    .button-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-top: 6px;
+    }
+
+    button {
+      background: var(--surface-border);
+      color: var(--text);
+      border: none;
+      padding: 10px 18px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    button:hover:not(:disabled) { background: #282d40; }
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .status-text {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+  </style>
 </head>
-<body class="nodock">
+<body>
 
-<header class="top">
-  <button class="brand" id="homeBtn" aria-label="Back to start">
-    <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="var(--accent)"/><g fill="var(--accent-ink)"><rect x="6" y="13" width="3" height="6" rx="1.5"/><rect x="11" y="8" width="3" height="16" rx="1.5"/><rect x="16" y="11" width="3" height="10" rx="1.5"/><rect x="21" y="6" width="3" height="20" rx="1.5"/></g></svg>
-    <span>Reader</span>
-  </button>
-  <div class="top-actions">
-    <button class="icon" id="tocBtn" aria-label="Contents" hidden><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button>
-    <button class="icon" id="themeBtn" aria-label="Switch light or dark theme"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
-    <button class="icon" id="settingsBtn" aria-label="Voice and settings"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>
-  </div>
-</header>
+<div class="container">
+  <header>
+    <h1>Natural Neural Speech Studio</h1>
+    <p>Zero-latency cloud neural speech streaming hosted directly on GitHub</p>
+  </header>
 
-<main>
-  <section id="home">
-    <div class="hero">
-      <h1>Read it to me.</h1>
-      <p>Paste text or open a PDF, EPUB, Word, Markdown or web file. It reads aloud, follows along on screen, and remembers where you stopped.</p>
+  <section class="card">
+    <div class="card-title">
+      <span>Direct Text & Markdown</span>
+      <span id="stats" class="status-text">0 words, 0 characters</span>
     </div>
-
-    <div class="card nat" id="natCard" hidden>
-      <h2>Get a natural voice</h2>
-      <p>The built-in voices on your device are limited. This one is a neural voice that runs entirely on your device. It is a one-time download of about 90 MB, and then it works offline.</p>
-      <div class="bar" id="natBar" hidden><i></i></div>
-      <div class="row" style="margin:0"><button class="btn pri" id="natGo">Download natural voice</button><span class="stat" id="natMsg"></span></div>
-    </div>
-
-    <label class="drop" id="drop" tabindex="0" role="button" aria-label="Open files">
-      <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
-      <strong>Drop files here or tap to choose</strong>
-      <span>PDF, EPUB, DOCX, MOBI, Markdown, HTML, TXT</span>
-      <input type="file" id="file" multiple hidden accept=".txt,.text,.md,.markdown,.html,.htm,.pdf,.docx,.epub,.mobi,.azw,.azw3">
-    </label>
-
-    <div class="or">or paste text</div>
-    <textarea id="paste" placeholder="Paste or type here" aria-label="Text to read"></textarea>
-    <div class="row">
-      <button class="btn pri" id="readBtn">Read text</button>
-      <button class="btn" id="clearBtn">Clear</button>
-      <span class="grow"></span>
-      <span class="stat" id="pasteStat">0 words</span>
-    </div>
-
-    <div class="recent" id="recent" hidden>
-      <h2>Continue reading</h2>
-      <ul id="recentList"></ul>
+    <textarea id="raw-text" placeholder="Paste raw text or Markdown content here..."></textarea>
+    
+    <div class="drop-zone" id="drop-zone">
+      <strong>Drop files here or click to browse</strong>
+      <p>Supports .md, .markdown, .txt, .html</p>
+      <input type="file" id="file-input" accept=".md,.markdown,.txt,.html" style="display: none;">
     </div>
   </section>
 
-  <section id="reader" hidden>
-    <div class="doc-head"><h1 id="docTitle"></h1><p id="docMeta"></p></div>
-    <article class="page" id="page" aria-label="Document text"></article>
+  <section class="card">
+    <div class="card-title">
+      <span>Interactive Document Reader</span>
+      <span class="status-text">Click any sentence to jump</span>
+    </div>
+    <div class="content-viewer" id="viewer">
+      <span class="status-text">Document sentences will appear here once loaded.</span>
+    </div>
   </section>
-</main>
 
-<footer class="dock" id="dock" hidden>
-  <div class="dock-in">
-    <div class="seek">
-      <input type="range" id="seek" min="0" max="0" value="0" aria-label="Position in document">
-      <div class="seek-meta"><span id="posTxt">0 / 0</span><span id="statusTxt"></span><span id="leftTxt"></span></div>
-    </div>
-    <div class="ctrls">
-      <button class="chip" id="voiceChip" aria-label="Choose voice">Voice</button>
-      <div class="transport">
-        <button class="icon" id="prevBtn" aria-label="Previous sentence"><svg viewBox="0 0 24 24"><path d="M6 5v14"/><path class="f" d="M19 5 9 12l10 7z"/></svg></button>
-        <button class="play" id="playBtn" aria-label="Play"><svg viewBox="0 0 24 24" id="playIcon"><path class="f" d="M8 4.8v14.4a.6.6 0 0 0 .9.5l11.6-7.2a.6.6 0 0 0 0-1L8.9 4.3a.6.6 0 0 0-.9.5z"/></svg></button>
-        <button class="icon" id="nextBtn" aria-label="Next sentence"><svg viewBox="0 0 24 24"><path d="M18 5v14"/><path class="f" d="m5 5 10 7-10 7z"/></svg></button>
-      </div>
-      <button class="chip" id="speedChip" aria-label="Change speed">1.0×</button>
-    </div>
-  </div>
-</footer>
-
-<!-- Settings -->
-<dialog id="settings" aria-label="Voice and settings">
-  <div class="dh"><h2>Voice and settings</h2><button class="icon" data-close aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
-  <div class="db">
-    <div class="grp">
-      <h3>Voice engine</h3>
-      <div class="seg" role="radiogroup" aria-label="Voice engine">
-        <button role="radio" id="tabNat" aria-checked="true">Natural</button>
-        <button role="radio" id="tabDev" aria-checked="false">This device</button>
+  <section class="card">
+    <div class="card-title">Speech Controls</div>
+    
+    <div class="controls-grid">
+      <div>
+        <label for="voice-select">Neural Voice</label>
+        <select id="voice-select">
+          <option value="en-US-JennyNeural">Jenny (US - Conversational)</option>
+          <option value="en-US-GuyNeural">Guy (US - Natural Deep)</option>
+          <option value="en-US-AriaNeural">Aria (US - Expressive)</option>
+          <option value="en-US-ChristopherNeural">Christopher (US - Storyteller)</option>
+          <option value="en-GB-SoniaNeural">Sonia (UK - Crisp British)</option>
+          <option value="en-GB-RyanNeural">Ryan (UK - Smooth British)</option>
+          <option value="en-AU-NatashaNeural">Natasha (Australian)</option>
+        </select>
       </div>
 
-      <div id="panNat">
-        <div id="natReady" hidden>
-          <label class="hint" for="voiceK" style="margin:0 0 6px;display:block">Voice (letter shows quality grade)</label>
-          <select id="voiceK"></select>
-          <div class="vgrid"><button class="btn sm" id="previewK">Hear a sample</button></div>
-          <div id="variantBox" style="margin-top:14px" hidden>
-            <label class="chk"><input type="checkbox" id="hdChk"><span>Use HD mode<small>Runs on your graphics chip. Faster and smoother, but a larger download (about 330 MB).</small></span></label>
-          </div>
-        </div>
-        <div id="natGet">
-          <p class="hint" style="margin-top:0">Neural voice that runs on your device. One-time download of about 90 MB, then it works offline.</p>
-          <div class="bar" id="natBar2" style="margin-top:10px" hidden><i></i></div>
-          <div class="vgrid"><button class="btn pri" id="natGo2">Download natural voice</button></div>
-          <p class="hint" id="natMsg2"></p>
-        </div>
-      </div>
-
-      <div id="panDev" hidden>
-        <label class="hint" for="voiceD" style="margin:0 0 6px;display:block">Voice</label>
-        <select id="voiceD"></select>
-        <div class="vgrid"><button class="btn sm" id="previewD">Hear a sample</button></div>
-        <label class="chk" style="margin-top:8px"><input type="checkbox" id="allVoices"><span>Show every voice<small>Includes other languages and novelty voices.</small></span></label>
-        <p class="hint">On a Mac, better voices are free: open System Settings, Accessibility, Spoken Content, Manage Voices, and download any marked Enhanced or Premium. Reload this page afterwards.</p>
+      <div>
+        <label for="speed-slider">Speed (<span id="speed-val">1.0</span>x)</label>
+        <input type="range" id="speed-slider" min="0.5" max="2.0" step="0.1" value="1.0">
       </div>
     </div>
 
-    <div class="grp">
-      <h3>Playback</h3>
-      <div class="line"><label for="speed">Speed</label><input type="range" id="speed" min="0.5" max="2" step="0.05"><output id="speedOut">1.0×</output></div>
-      <div class="line"><label for="vol">Volume</label><input type="range" id="vol" min="0" max="1" step="0.05"><output id="volOut">100%</output></div>
-      <div class="line"><label for="size">Text size</label><input type="range" id="size" min="0.9" max="1.9" step="0.05"><output id="sizeOut">100%</output></div>
-      <div class="line"><label for="sleep">Sleep timer</label>
-        <select id="sleep" style="flex:1"><option value="0">Off</option><option value="10">10 minutes</option><option value="20">20 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">1 hour</option></select></div>
-      <label class="chk"><input type="checkbox" id="autoScroll"><span>Scroll to follow along</span></label>
-      <label class="chk"><input type="checkbox" id="readCode"><span>Read code blocks aloud<small>Off by default, so code is shown but skipped.</small></span></label>
-      <label class="chk"><input type="checkbox" id="wake"><span>Keep the screen on while reading</span></label>
+    <div class="status-text" id="engine-status">Ready.</div>
+
+    <div class="button-group">
+      <button id="btn-prev">⏮ Prev</button>
+      <button id="btn-play" class="primary">▶ Play</button>
+      <button id="btn-next">Next ⏭</button>
+      <button id="btn-export">Export Audio (.mp3)</button>
     </div>
+  </section>
+</div>
 
-    <div class="grp">
-      <h3>Pronunciation fixes</h3>
-      <textarea class="field" id="dict" spellcheck="false" placeholder="One per line, like this:&#10;Nguyen = win&#10;SQL = sequel&#10;GIF = jif" aria-label="Pronunciation fixes"></textarea>
-      <p class="hint">Whenever the word on the left appears, the voice says what is on the right. Your text on screen does not change.</p>
-    </div>
-
-    <div class="grp">
-      <h3>Audio file and storage</h3>
-      <div class="vgrid" style="margin-top:0">
-        <button class="btn sm" id="exportBtn">Save as audio file (WAV)</button>
-        <button class="btn sm" id="removeModel">Remove downloaded voice</button>
-        <button class="btn sm" id="clearRecent">Clear reading history</button>
-      </div>
-      <p class="hint">Saving audio needs the natural voice. Long documents take a while, because each sentence is generated on your device.</p>
-      <p class="hint">Shortcuts: Space plays or pauses, the left and right arrows change sentence, [ and ] change speed.</p>
-    </div>
-  </div>
-</dialog>
-
-<dialog id="tocDlg" aria-label="Contents">
-  <div class="dh"><h2>Contents</h2><button class="icon" data-close aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
-  <div class="db"><ul class="toc" id="tocList"></ul></div>
-</dialog>
-
-<dialog id="expDlg" aria-label="Save audio">
-  <div class="dh"><h2>Saving audio</h2></div>
-  <div class="db" style="padding-top:18px">
-    <p id="expMsg" class="hint" style="margin-top:0">Preparing…</p>
-    <div class="bar" style="margin-top:14px"><i id="expBar"></i></div>
-    <div class="vgrid"><button class="btn sm" id="expCancel">Cancel</button></div>
-  </div>
-</dialog>
-
-<div class="busy" id="busy" hidden><div class="spin"></div><p id="busyTxt" class="stat"></p></div>
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
-
-<!-- Natural voice worker (Kokoro). Runs off the main thread so the page stays smooth. -->
-<script type="text/plain" id="kworker">
-import { KokoroTTS } from '__KOKORO_URL__';
-let tts = null, queue = [], busy = false;
-const post = (m, t) => self.postMessage(m, t || []);
-
-function splitLong(text, max) {
-  if (text.length <= max) return [text];
-  const toks = text.match(/[^,;:—–]+[,;:—–]?\s*/g) || [text];
-  const out = []; let cur = '';
-  for (const t of toks) {
-    if ((cur + t).length > max && cur) { out.push(cur.trim()); cur = ''; }
-    if (t.length > max) {
-      const words = t.split(/\s+/); let w = '';
-      for (const x of words) { if ((w + ' ' + x).length > max && w) { out.push(w.trim()); w = ''; } w += ' ' + x; }
-      cur += w;
-    } else cur += t;
-  }
-  if (cur.trim()) out.push(cur.trim());
-  return out;
-}
-
-async function pump() {
-  if (busy) return; busy = true;
-  while (queue.length) {
-    const j = queue.shift();
-    try {
-      const t0 = performance.now();
-      const arrs = []; let sr = 24000, n = 0;
-      for (const part of splitLong(j.text, 220)) {
-        const out = await tts.generate(part, { voice: j.voice, speed: j.speed });
-        arrs.push(out.audio); sr = out.sampling_rate || 24000; n += out.audio.length;
-      }
-      const f = new Float32Array(n); let o = 0;
-      for (const a of arrs) { f.set(a, o); o += a.length; }
-      post({ t: 'audio', id: j.id, buf: f.buffer, sr, ms: performance.now() - t0 }, [f.buffer]);
-    } catch (err) {
-      post({ t: 'genError', id: j.id, msg: String((err && err.message) || err) });
-    }
-  }
-  busy = false;
-}
-
-self.onmessage = async (e) => {
-  const m = e.data;
-  if (m.t === 'init') {
-    try {
-      const cb = (p) => { if (p && (p.status === 'progress' || p.status === 'done' || p.status === 'initiate')) post({ t: 'progress', status: p.status, file: p.file, loaded: p.loaded || 0, total: p.total || 0 }); };
-      if (m.device === 'webgpu') {
-        if (!self.navigator.gpu || !(await self.navigator.gpu.requestAdapter())) throw new Error('WebGPU is not available on this device.');
-      }
-      tts = await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', { dtype: m.dtype, device: m.device, progress_callback: cb });
-      post({ t: 'ready' });
-    } catch (err) {
-      post({ t: 'initError', msg: String((err && err.message) || err) });
-    }
-  } else if (m.t === 'gen') {
-    queue.push(m); pump();
-  } else if (m.t === 'clear') {
-    const ids = queue.map(q => q.id); queue = [];
-    post({ t: 'dropped', ids });
-  }
-};
-</script>
+<audio id="tts-audio-element" style="display:none;"></audio>
 
 <script>
-'use strict';
-/* =========================================================
-   Reader: text to speech
-   One file. Natural voices come from Kokoro (runs on-device),
-   with the browser's own voices as an instant fallback.
-   ========================================================= */
+  // State
+  let sentences = [];
+  let currentIndex = 0;
+  let isPlaying = false;
+  const audioCache = new Map(); // Map<index, Blob>
+  const pendingRequests = new Set();
 
-const KOKORO_URL = 'https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js';
-const LIB = {
-  pdf: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
-  pdfWorker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
-  mammoth: 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js',
-  jszip: 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'
-};
+  // Elements
+  const rawText = document.getElementById('raw-text');
+  const dropZone = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('file-input');
+  const viewer = document.getElementById('viewer');
+  const stats = document.getElementById('stats');
+  const voiceSelect = document.getElementById('voice-select');
+  const speedSlider = document.getElementById('speed-slider');
+  const speedVal = document.getElementById('speed-val');
+  const engineStatus = document.getElementById('engine-status');
+  const btnPlay = document.getElementById('btn-play');
+  const btnPrev = document.getElementById('btn-prev');
+  const btnNext = document.getElementById('btn-next');
+  const btnExport = document.getElementById('btn-export');
+  const audioElement = document.getElementById('tts-audio-element');
 
-/* ---------- tiny helpers ---------- */
-const $ = (s, r = document) => r.querySelector(s);
-const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-const ls = {
-  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
-  del(k) { try { localStorage.removeItem(k); } catch {} }
-};
-class Cancel extends Error { constructor() { super('cancelled'); this.name = 'Cancel'; } }
-function hash(str) {
-  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
-  for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
-}
+  // Markdown & Text Cleaning
+  function cleanMarkdown(md) {
+    let t = md.replace(/^---[\s\S]*?---\n*/, '');
+    t = t.replace(/```[\s\S]*?```/g, '');
+    t = t.replace(/`([^`]+)`/g, '$1');
+    t = t.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+    t = t.replace(/!\[([^\]]*)\]\([^)]+\)/g, '');
+    t = t.replace(/^#{1,6}\s+/gm, '');
+    t = t.replace(/^>\s+/gm, '');
+    t = t.replace(/[*_~]{1,3}([^*_~]+)[*_~]{1,3}/g, '$1');
+    t = t.replace(/^[-*+]\s+/gm, '');
+    t = t.replace(/^\d+\.\s+/gm, '');
+    return t.trim();
+  }
 
-/* ---------- settings ---------- */
-const DEFAULTS = { engine: 'device', voiceK: 'af_heart', voiceD: '', speed: 1, volume: 1, size: 1, theme: '', hd: false,
-  autoScroll: true, readCode: false, wake: false, allVoices: false, dict: '' };
-const S = Object.assign({}, DEFAULTS, ls.get('tts:settings', {}));
-const saveS = () => ls.set('tts:settings', S);
+  function parseSentences(text) {
+    const raw = cleanMarkdown(text);
+    if (!raw) return [];
+    const matched = raw.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [];
+    return matched.map(s => s.trim()).filter(s => s.length > 0);
+  }
 
-/* ---------- toast / busy ---------- */
-let toastT;
-function toast(msg, err = false, ms = 3200) {
-  const t = $('#toast'); t.textContent = msg; t.classList.toggle('err', err); t.classList.add('show');
-  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms);
-}
-function busy(msg) { $('#busy').hidden = !msg; if (msg) $('#busyTxt').textContent = msg; }
+  function clearCache() {
+    audioCache.forEach(blobUrl => URL.revokeObjectURL(blobUrl));
+    audioCache.clear();
+    pendingRequests.clear();
+  }
 
-/* ---------- theme ---------- */
-function applyTheme() {
-  const t = S.theme || 'dark';
-  document.documentElement.dataset.theme = t;
-  const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = t === 'light' ? '#f3f6f4' : '#0a0f0d';
-}
-$('#themeBtn').onclick = () => { S.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; saveS(); applyTheme(); };
+  function updateDocumentView() {
+    clearCache();
+    sentences = parseSentences(rawText.value);
+    const words = rawText.value.trim().split(/\s+/).filter(Boolean).length;
+    stats.textContent = `${words} words, ${rawText.value.length} characters`;
 
-/* =========================================================
-   IndexedDB: recent documents
-   ========================================================= */
-const DB = {
-  _p: null,
-  open() {
-    if (this._p) return this._p;
-    this._p = new Promise((res, rej) => {
-      const r = indexedDB.open('tts-reader', 1);
-      r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('meta', { keyPath: 'id' }); d.createObjectStore('docs', { keyPath: 'id' }); };
-      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    if (sentences.length === 0) {
+      viewer.innerHTML = '<span class="status-text">No text loaded.</span>';
+      return;
+    }
+
+    viewer.innerHTML = sentences
+      .map((s, i) => `<span class="sentence" data-idx="${i}">${s} </span>`)
+      .join('');
+
+    viewer.querySelectorAll('.sentence').forEach(el => {
+      el.addEventListener('click', (e) => jumpTo(parseInt(e.target.dataset.idx, 10)));
     });
-    return this._p;
-  },
-  async tx(stores, mode, fn) {
-    const db = await this.open();
-    return new Promise((res, rej) => { const t = db.transaction(stores, mode); const out = fn(t); t.oncomplete = () => res(out && out.result !== undefined ? out.result : undefined); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
-  },
-  async save(doc) {
-    const meta = { id: doc.id, title: doc.title, added: Date.now(), words: doc.words };
-    await this.tx(['meta', 'docs'], 'readwrite', t => { t.objectStore('meta').put(meta); t.objectStore('docs').put({ id: doc.id, blocks: doc.blocks }); });
-    const all = await this.metas();
-    for (const m of all.slice(15)) await this.del(m.id);
-  },
-  async metas() { try { const r = await this.tx(['meta'], 'readonly', t => t.objectStore('meta').getAll()); return (r || []).sort((a, b) => b.added - a.added); } catch { return []; } },
-  async get(id) { return this.tx(['docs'], 'readonly', t => t.objectStore('docs').get(id)); },
-  async del(id) { ls.del('pos:' + id); return this.tx(['meta', 'docs'], 'readwrite', t => { t.objectStore('meta').delete(id); t.objectStore('docs').delete(id); }); },
-  async clear() { return this.tx(['meta', 'docs'], 'readwrite', t => { t.objectStore('meta').clear(); t.objectStore('docs').clear(); }); }
-};
 
-/* =========================================================
-   Document parsing  ->  { title, blocks:[{t,text,ordered?}] }
-   block types: h1..h6, p, li, quote, code, tr, hr, pg
-   ========================================================= */
-const loaded = {};
-function loadScript(src) {
-  return loaded[src] || (loaded[src] = new Promise((res, rej) => {
-    const s = document.createElement('script'); s.src = src; s.onload = res;
-    s.onerror = () => { delete loaded[src]; rej(new Error('Could not load a helper library. Check your connection and try again.')); };
-    document.head.appendChild(s);
-  }));
-}
-const readText = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsText(f); });
-
-/* --- plain text --- */
-function parsePlain(src) {
-  src = src.replace(/\r\n?/g, '\n').replace(/ /g, ' ');
-  if (/^#{1,6}\s\S/m.test(src) || /^```/m.test(src) || /\*\*[^*\n]+\*\*/.test(src) || /\[[^\]\n]+\]\([^)\n]+\)/.test(src)) return parseMarkdown(src);
-  const hasBlank = /\n\s*\n/.test(src);
-  const parts = hasBlank ? src.split(/\n\s*\n/) : src.split('\n');
-  const blocks = parts.map(p => p.replace(/\s+/g, ' ').trim()).filter(Boolean).map(text => ({ t: 'p', text }));
-  return { title: '', blocks };
-}
-
-/* --- markdown --- */
-function mdInline(s) {
-  return s
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\[[^\]]*\]/g, '$1')
-    .replace(/<https?:[^>]+>/g, ' link ')
-    .replace(/<\/?[a-zA-Z][^>]*>/g, '')
-    .replace(/`+([^`]+)`+/g, '$1')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/(^|\W)__([^_]+)__(?=\W|$)/g, '$1$2')
-    .replace(/(^|[\s(])[*_](\S(?:[^*_]*?\S)?)[*_](?=[\s).,;:!?]|$)/g, '$1$2')
-    .replace(/~~([^~]+)~~/g, '$1')
-    .replace(/\[\^[^\]]+\]/g, '')
-    .replace(/\\([\\`*_{}\[\]()#+\-.!|>~])/g, '$1')
-    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/\s+/g, ' ').trim();
-}
-function parseMarkdown(src) {
-  src = src.replace(/\r\n?/g, '\n');
-  let title = '';
-  const fm = src.match(/^---\n([\s\S]*?)\n---\n?/);
-  if (fm) { const m = fm[1].match(/^title:\s*["']?(.+?)["']?\s*$/mi); if (m) title = m[1]; src = src.slice(fm[0].length); }
-  const lines = src.split('\n'), out = []; let i = 0, para = [];
-  const flush = () => { if (para.length) { const t = mdInline(para.join(' ')); if (t) out.push({ t: 'p', text: t }); para = []; } };
-  const isSep = l => l && /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l) && l.includes('-');
-  const cells = l => l.trim().replace(/^\||\|$/g, '').split('|').map(c => mdInline(c)).filter(Boolean);
-  while (i < lines.length) {
-    const l = lines[i]; let m;
-    if ((m = l.match(/^\s*(`{3,}|~{3,})/))) {
-      flush(); const f = m[1], buf = []; i++;
-      while (i < lines.length && !lines[i].trim().startsWith(f)) buf.push(lines[i++]);
-      i++; out.push({ t: 'code', text: buf.join('\n') }); continue;
-    }
-    if (/^\s*$/.test(l)) { flush(); i++; continue; }
-    if (/^\s{0,3}\[[^\]]+\]:\s+\S+/.test(l)) { i++; continue; }
-    if ((m = l.match(/^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/))) { flush(); const t = mdInline(m[2]); if (t) out.push({ t: 'h' + m[1].length, text: t }); i++; continue; }
-    if (para.length && /^\s{0,3}(=+|-+)\s*$/.test(l)) { const lvl = l.trim()[0] === '=' ? 1 : 2; const t = mdInline(para.join(' ')); para = []; if (t) out.push({ t: 'h' + lvl, text: t }); i++; continue; }
-    if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(l)) { flush(); out.push({ t: 'hr', text: '' }); i++; continue; }
-    if (l.includes('|') && isSep(lines[i + 1])) {
-      flush(); const h = cells(l); if (h.length) out.push({ t: 'tr', text: h.join(', ') }); i += 2;
-      while (i < lines.length && lines[i].includes('|') && lines[i].trim()) { const c = cells(lines[i++]); if (c.length) out.push({ t: 'tr', text: c.join(', ') }); }
-      continue;
-    }
-    if (/^\s{0,3}>/.test(l)) {
-      flush(); let buf = [];
-      while (i < lines.length && /^\s{0,3}>/.test(lines[i])) { const s = lines[i].replace(/^\s{0,3}>\s?/, ''); if (!s.trim()) { const t = mdInline(buf.join(' ')); if (t) out.push({ t: 'quote', text: t }); buf = []; } else buf.push(s.trim()); i++; }
-      const t = mdInline(buf.join(' ').replace(/^#{1,6}\s+/, '')); if (t) out.push({ t: 'quote', text: t }); continue;
-    }
-    if ((m = l.match(/^(\s*)([-*+]|\d+[.)])\s+(.*)$/))) {
-      flush(); let txt = m[3]; const ordered = /\d/.test(m[2]); i++;
-      while (i < lines.length && lines[i].trim() && /^\s{2,}\S/.test(lines[i]) && !/^\s*([-*+]|\d+[.)])\s+/.test(lines[i])) txt += ' ' + lines[i++].trim();
-      txt = txt.replace(/^\[[ xX]\]\s+/, ''); const t = mdInline(txt); if (t) out.push({ t: 'li', ordered, text: t }); continue;
-    }
-    para.push(l.trim()); i++;
+    highlightActive();
+    
+    // Auto pre-fetch the very first sentence immediately upon typing or paste
+    if (sentences.length > 0) fetchSentenceAudio(0);
   }
-  flush();
-  if (!title) { const h = out.find(b => b.t === 'h1'); if (h) title = h.text; }
-  return { title, blocks: out };
-}
 
-/* --- HTML -> blocks (also used for DOCX, EPUB, MOBI) --- */
-const BLOCK = new Set('ADDRESS ARTICLE ASIDE BLOCKQUOTE BODY DD DETAILS DIV DL DT FIELDSET FIGCAPTION FIGURE FOOTER FORM H1 H2 H3 H4 H5 H6 HEADER HR LI MAIN NAV OL P PRE SECTION TABLE TR UL'.split(' '));
-const SKIP = new Set('SCRIPT STYLE NOSCRIPT SVG HEAD TEMPLATE IMG IFRAME CANVAS VIDEO AUDIO BUTTON SELECT INPUT TEXTAREA'.split(' '));
-function htmlToBlocks(root) {
-  root.querySelectorAll('sup').forEach(x => { if (/^\[?\d{1,3}\]?$/.test(x.textContent.trim())) x.remove(); });
-  const out = [];
-  const hasBlock = el => { for (const c of el.children) { if (BLOCK.has(c.tagName.toUpperCase())) return true; if (!SKIP.has(c.tagName.toUpperCase()) && hasBlock(c)) return true; } return false; };
-  const tx = n => n.textContent.replace(/\s+/g, ' ').trim();
-  function walk(el, ctx) {
-    let buf = '';
-    const kind = () => ctx.kind || 'p';
-    const push = (text, extra) => { text = text.replace(/\s+/g, ' ').trim(); if (text && !/^\d{1,4}$/.test(text)) out.push(Object.assign({ t: kind(), text }, extra || {})); };
-    const flush = () => { push(buf, kind() === 'li' ? { ordered: !!ctx.ordered } : null); buf = ''; };
-    for (const n of el.childNodes) {
-      if (n.nodeType === 3) { buf += n.nodeValue; continue; }
-      if (n.nodeType !== 1) continue;
-      const tag = n.tagName.toUpperCase();
-      if (SKIP.has(tag)) continue;
-      if (tag === 'BR') { buf += ' '; continue; }
-      if (tag === 'SUP' && /^\[?\d{1,3}\]?$/.test(n.textContent.trim())) continue;
-      if (!BLOCK.has(tag)) { if (hasBlock(n)) { flush(); walk(n, ctx); } else buf += n.textContent; continue; }
-      flush();
-      if (/^H[1-6]$/.test(tag)) { const t = tx(n); if (t) out.push({ t: 'h' + tag[1], text: t }); }
-      else if (tag === 'PRE') { const t = n.textContent.replace(/\n+$/, ''); if (t.trim()) out.push({ t: 'code', text: t }); }
-      else if (tag === 'HR') out.push({ t: 'hr', text: '' });
-      else if (tag === 'UL' || tag === 'OL') walk(n, Object.assign({}, ctx, { ordered: tag === 'OL' }));
-      else if (tag === 'LI') walk(n, Object.assign({}, ctx, { kind: 'li' }));
-      else if (tag === 'BLOCKQUOTE') walk(n, Object.assign({}, ctx, { kind: 'quote' }));
-      else if (tag === 'TABLE') n.querySelectorAll('tr').forEach(tr => { const t = [...tr.children].map(c => tx(c)).filter(Boolean).join(', '); if (t) out.push({ t: 'tr', text: t }); });
-      else if (hasBlock(n)) walk(n, ctx);
-      else push(tx(n), kind() === 'li' ? { ordered: !!ctx.ordered } : null);
-    }
-    flush();
-  }
-  walk(root, {});
-  return out;
-}
-function htmlDoc(html, type = 'text/html') { return new DOMParser().parseFromString(html, type); }
-
-async function parseHtml(file) {
-  const d = htmlDoc(await readText(file)); d.querySelectorAll('script,style,noscript,nav,footer').forEach(e => e.remove());
-  const root = d.querySelector('article') || d.querySelector('main') || d.body;
-  return { title: (d.querySelector('title') || {}).textContent || '', blocks: htmlToBlocks(root) };
-}
-
-async function parseDocx(file) {
-  await loadScript(LIB.mammoth);
-  const r = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
-  return { title: '', blocks: htmlToBlocks(htmlDoc(r.value).body) };
-}
-
-async function parseEpub(file) {
-  await loadScript(LIB.jszip);
-  const zip = await JSZip.loadAsync(await file.arrayBuffer());
-  const rd = async p => { const f = zip.file(p) || zip.file(decodeURIComponent(p)); return f ? f.async('string') : null; };
-  let order = [], title = '';
-  const cont = await rd('META-INF/container.xml');
-  const opfPath = cont && (cont.match(/full-path="([^"]+)"/) || [])[1];
-  if (opfPath) {
-    const opf = htmlDoc(await rd(opfPath), 'application/xml');
-    const base = opfPath.includes('/') ? opfPath.slice(0, opfPath.lastIndexOf('/') + 1) : '';
-    const man = {}; opf.querySelectorAll('manifest > item').forEach(it => { man[it.getAttribute('id')] = it; });
-    const t = opf.getElementsByTagName('dc:title')[0]; if (t) title = t.textContent.trim();
-    opf.querySelectorAll('spine > itemref').forEach(r => {
-      const it = man[r.getAttribute('idref')]; if (!it) return;
-      if (/\bnav\b/.test(it.getAttribute('properties') || '')) return;
-      if (!/html|xml/.test(it.getAttribute('media-type') || '')) return;
-      order.push(decodeURIComponent(new URL(it.getAttribute('href'), 'http://x/' + base).pathname.slice(1)));
+  function highlightActive() {
+    const els = viewer.querySelectorAll('.sentence');
+    els.forEach((el, i) => {
+      el.classList.toggle('active', i === currentIndex);
+      el.classList.toggle('buffered', audioCache.has(i));
+      if (i === currentIndex) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
   }
-  if (!order.length) order = Object.keys(zip.files).filter(n => /\.(x?html?)$/i.test(n)).sort();
-  const blocks = [];
-  for (let i = 0; i < order.length; i++) {
-    busy(`Reading chapter ${i + 1} of ${order.length}…`);
-    const xml = await rd(order[i]); if (!xml) continue;
-    let d = htmlDoc(xml, 'application/xhtml+xml'); if (d.querySelector('parsererror')) d = htmlDoc(xml);
-    d.querySelectorAll('script,style').forEach(e => e.remove());
-    if (d.body) blocks.push(...htmlToBlocks(d.body));
-  }
-  return { title, blocks };
-}
 
-/* MOBI / AZW (best effort: PalmDOC compression, no DRM) */
-function palmDecompress(inp) {
-  const out = []; let i = 0;
-  while (i < inp.length) {
-    let c = inp[i++];
-    if (c === 0 || (c >= 9 && c <= 0x7f)) out.push(c);
-    else if (c >= 1 && c <= 8) { for (let k = 0; k < c && i < inp.length; k++) out.push(inp[i++]); }
-    else if (c >= 0xc0) { out.push(32, c ^ 0x80); }
-    else { c = (c << 8) | inp[i++]; const dist = (c >> 3) & 0x7ff, len = (c & 7) + 3; for (let k = 0; k < len; k++) out.push(out[out.length - dist]); }
+  // Direct Edge Neural Speech Streaming Implementation
+  function fetchSentenceAudio(idx) {
+    return new Promise((resolve, reject) => {
+      if (idx < 0 || idx >= sentences.length) return resolve(null);
+      if (audioCache.has(idx)) return resolve(audioCache.get(idx));
+      if (pendingRequests.has(idx)) return resolve(null);
+
+      pendingRequests.add(idx);
+      const text = sentences[idx];
+      const voice = voiceSelect.value;
+      const ratePct = Math.round((parseFloat(speedSlider.value) - 1.0) * 100);
+      const rateStr = `${ratePct >= 0 ? '+' : ''}${ratePct}%`;
+
+      const connectId = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+      
+      const wsUrl = `wss://speech.platform.bing.com/consumer/speech/synthesize/readahead/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9FB37E23D68491D6F4&ConnectionId=${connectId}`;
+      const socket = new WebSocket(wsUrl);
+      const audioChunks = [];
+
+      socket.binaryType = 'arraybuffer';
+
+      socket.onopen = () => {
+        // Handshake config
+        const timestamp = new Date().toISOString();
+        const configMsg = `X-Timestamp:${timestamp}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n` +
+          JSON.stringify({
+            context: {
+              synthesis: {
+                audio: {
+                  metadataoptions: { sentenceBoundaryEnabled: false, wordBoundaryEnabled: false },
+                  outputFormat: "audio-24khz-48kbitrate-mono-mp3"
+                }
+              }
+            }
+          });
+        socket.send(configMsg);
+
+        // SSML Request
+        const ssml = `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'><voice name='${voice}'><prosody rate='${rateStr}' pitch='+0Hz'>${text}</prosody></voice></speak>`;
+        const requestMsg = `X-RequestId:${connectId}\r\nX-Timestamp:${timestamp}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n${ssml}`;
+        socket.send(requestMsg);
+      };
+
+      socket.onmessage = (event) => {
+        if (event.data instanceof ArrayBuffer) {
+          // Binary audio packet: first 2 bytes denote headers length
+          const view = new DataView(event.data);
+          const headerLen = view.getUint16(0);
+          const audioData = event.data.slice(2 + headerLen);
+          if (audioData.byteLength > 0) audioChunks.push(audioData);
+        } else if (typeof event.data === 'string' && event.data.includes("Path:turn.end")) {
+          socket.close();
+        }
+      };
+
+      socket.onclose = () => {
+        pendingRequests.delete(idx);
+        if (audioChunks.length > 0) {
+          const blob = new Blob(audioChunks, { type: 'audio/mp3' });
+          const url = URL.createObjectURL(blob);
+          audioCache.set(idx, url);
+          const el = viewer.querySelector(`.sentence[data-idx="${idx}"]`);
+          if (el) el.classList.add('buffered');
+          resolve(url);
+        } else {
+          resolve(null);
+        }
+      };
+
+      socket.onerror = (err) => {
+        pendingRequests.delete(idx);
+        console.error("Speech stream error:", err);
+        resolve(null);
+      };
+    });
   }
-  return Uint8Array.from(out);
-}
-async function parseMobi(file) {
-  const buf = new Uint8Array(await file.arrayBuffer()), dv = new DataView(buf.buffer);
-  const n = dv.getUint16(76), offs = []; for (let i = 0; i < n; i++) offs.push(dv.getUint32(78 + i * 8));
-  const r0 = offs[0], comp = dv.getUint16(r0), nrec = dv.getUint16(r0 + 8), enc = dv.getUint16(r0 + 12);
-  if (enc !== 0) throw new Error('This book is DRM-protected, so it cannot be read.');
-  if (comp !== 1 && comp !== 2) throw new Error('This MOBI uses a compression type that is not supported. Try converting it to EPUB.');
-  const hdrLen = dv.getUint32(r0 + 20), codepage = dv.getUint32(r0 + 28);
-  const flags = hdrLen >= 0xe4 ? dv.getUint16(r0 + 0xf2) : 0;
-  const parts = []; let total = 0;
-  for (let i = 1; i <= nrec && i < n; i++) {
-    let rec = buf.subarray(offs[i], offs[i + 1] || buf.length);
-    let trail = 0;
-    for (let f = flags >> 1; f; f >>= 1) {
-      if (f & 1) { let ptr = rec.length - trail, v = 0, bit = 0; for (;;) { const b = rec[ptr - 1]; v |= (b & 0x7f) << bit; bit += 7; ptr--; if ((b & 0x80) || bit >= 28 || ptr === 0) break; } trail += v; }
+
+  // Pre-fetching Queue: Keeps next 2 sentences hot in memory
+  function prefetchUpcoming() {
+    for (let i = 1; i <= 2; i++) {
+      const target = currentIndex + i;
+      if (target < sentences.length && !audioCache.has(target)) {
+        fetchSentenceAudio(target);
+      }
     }
-    if (flags & 1) trail += (rec[rec.length - trail - 1] & 3) + 1;
-    rec = rec.subarray(0, rec.length - trail);
-    const d = comp === 2 ? palmDecompress(rec) : rec; parts.push(d); total += d.length;
   }
-  const all = new Uint8Array(total); let o = 0; for (const p of parts) { all.set(p, o); o += p.length; }
-  const html = new TextDecoder(codepage === 65001 ? 'utf-8' : 'windows-1252').decode(all);
-  const d = htmlDoc(html.replace(/<mbp:pagebreak[^>]*>/gi, '<hr>'));
-  let title = ''; try { const no = dv.getUint32(r0 + 84), nl = dv.getUint32(r0 + 88); title = new TextDecoder().decode(buf.subarray(r0 + no, r0 + no + nl)); } catch {}
-  return { title, blocks: htmlToBlocks(d.body) };
-}
 
-/* --- PDF --- */
-function pdfLines(items) {
-  const lines = []; let cur = null;
-  for (const it of items) {
-    if (!('str' in it)) continue;
-    const x = it.transform[4], y = it.transform[5], h = it.height || Math.abs(it.transform[3]) || 10;
-    if (!cur || Math.abs(y - cur.y) > h * 0.5) { cur = { y, x0: x, x1: x, h, t: '' }; lines.push(cur); }
-    else if (x - cur.x1 > h * 0.2 && !cur.t.endsWith(' ') && !it.str.startsWith(' ')) cur.t += ' ';
-    cur.t += it.str; cur.x1 = Math.max(cur.x1, x + (it.width || 0));
-    if (it.hasEOL) cur = null;
-  }
-  return lines.map(l => (l.t = l.t.replace(/\s+/g, ' ').trim(), l)).filter(l => l.t);
-}
-async function parsePdf(file) {
-  await loadScript(LIB.pdf); pdfjsLib.GlobalWorkerOptions.workerSrc = LIB.pdfWorker;
-  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
-  const pages = [];
-  for (let p = 1; p <= pdf.numPages; p++) {
-    busy(`Reading page ${p} of ${pdf.numPages}…`);
-    const tc = await (await pdf.getPage(p)).getTextContent(); pages.push(pdfLines(tc.items));
-  }
-  const norm = t => t.replace(/\d+/g, '#').toLowerCase();
-  if (pages.length >= 4) {
-    const cnt = {}; const edge = pg => [pg[0], pg[pg.length - 1]].filter(Boolean);
-    pages.forEach(pg => new Set(edge(pg).map(l => norm(l.t))).forEach(k => cnt[k] = (cnt[k] || 0) + 1));
-    pages.forEach((pg, i) => { pages[i] = pg.filter((l, j) => !((j === 0 || j === pg.length - 1) && cnt[norm(l.t)] >= pages.length * 0.4)); });
-  }
-  const all = pages.flat().map(l => l.h).sort((a, b) => a - b); const med = all.length ? all[all.length >> 1] : 10;
-  const blocks = []; let any = false;
-  pages.forEach((pg, pi) => {
-    const lines = pg.filter(l => !/^\d{1,4}$/.test(l.t)); if (!lines.length) return; any = true;
-    blocks.push({ t: 'pg', text: `Page ${pi + 1}` });
-    const maxX = Math.max(...lines.map(l => l.x1)), minX = Math.min(...lines.map(l => l.x0));
-    let para = '', prev = null, first = true;
-    const flush = () => {
-      const text = para.trim(); para = ''; if (!text) return;
-      const last = blocks.length && blocks[blocks.length - 1];
-      let prevP = null; for (let k = blocks.length - 1; k >= 0 && k >= blocks.length - 2; k--) if (blocks[k].t === 'p') { prevP = blocks[k]; break; }
-      if (first && prevP && !/[.!?:"”')\]]$/.test(prevP.text) && /^[a-z]/.test(text) && (last.t === 'pg')) { prevP.text += ' ' + text; first = false; return; }
-      first = false; blocks.push({ t: 'p', text });
+  // Playback Loop
+  async function playCurrentSentence() {
+    if (sentences.length === 0) {
+      updateDocumentView();
+      if (sentences.length === 0) return alert("Please enter text first.");
+    }
+
+    if (currentIndex >= sentences.length) {
+      stopPlayback();
+      currentIndex = 0;
+      return;
+    }
+
+    isPlaying = true;
+    btnPlay.textContent = "⏸ Pause";
+    highlightActive();
+
+    let url = audioCache.get(currentIndex);
+    if (!url) {
+      engineStatus.textContent = `Streaming sentence ${currentIndex + 1}...`;
+      url = await fetchSentenceAudio(currentIndex);
+    }
+
+    if (!url) {
+      // If network fails, skip forward
+      currentIndex++;
+      if (isPlaying) playCurrentSentence();
+      return;
+    }
+
+    // Trigger pre-fetch of sentences ahead
+    prefetchUpcoming();
+
+    audioElement.src = url;
+    audioElement.playbackRate = parseFloat(speedSlider.value);
+
+    audioElement.onended = () => {
+      if (isPlaying) {
+        currentIndex++;
+        playCurrentSentence();
+      }
     };
-    for (const l of lines) {
-      if (l.h >= med * 1.3 && l.t.length < 140) { flush(); const lv = l.h >= med * 1.8 ? 'h2' : 'h3'; const lb = blocks[blocks.length - 1]; if (lb && lb.t === lv && prev && prev.h === l.h) lb.text += ' ' + l.t; else blocks.push({ t: lv, text: l.t }); prev = l; first = false; continue; }
-      if (prev) {
-        const gap = Math.abs(prev.y - l.y), endS = /[.!?:"”')]$/.test(prev.t);
-        const newPara = gap > prev.h * 1.9 || (endS && prev.x1 < maxX - (maxX - minX) * 0.2) || (endS && l.x0 > minX + prev.h * 0.8);
-        if (newPara) flush();
+
+    audioElement.onerror = () => stopPlayback();
+
+    await audioElement.play();
+    engineStatus.textContent = `Reading sentence ${currentIndex + 1} of ${sentences.length}`;
+  }
+
+  function stopPlayback() {
+    isPlaying = false;
+    btnPlay.textContent = "▶ Play";
+    audioElement.pause();
+    engineStatus.textContent = "Paused.";
+  }
+
+  function jumpTo(idx) {
+    stopPlayback();
+    currentIndex = Math.max(0, Math.min(idx, sentences.length - 1));
+    highlightActive();
+    playCurrentSentence();
+  }
+
+  // Keybindings
+  window.addEventListener('keydown', (e) => {
+    if (['TEXTAREA', 'INPUT'].includes(e.target.tagName)) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      isPlaying ? stopPlayback() : playCurrentSentence();
+    } else if (e.code === 'ArrowRight') {
+      e.preventDefault();
+      jumpTo(currentIndex + 1);
+    } else if (e.code === 'ArrowLeft') {
+      e.preventDefault();
+      jumpTo(currentIndex - 1);
+    }
+  });
+
+  // Export Document as MP3
+  btnExport.addEventListener('click', async () => {
+    if (sentences.length === 0) return alert("Load some text first.");
+    stopPlayback();
+    engineStatus.textContent = "Exporting audio stream...";
+
+    const allBlobs = [];
+    for (let i = 0; i < sentences.length; i++) {
+      engineStatus.textContent = `Rendering segment ${i + 1} of ${sentences.length}...`;
+      let url = audioCache.get(i);
+      if (!url) url = await fetchSentenceAudio(i);
+      if (url) {
+        const res = await fetch(url);
+        const b = await res.blob();
+        allBlobs.push(b);
       }
-      if (para && /[a-z]-$/.test(para) && /^[a-z]/.test(l.t)) para = para.slice(0, -1) + l.t; else para += (para ? ' ' : '') + l.t;
-      prev = l;
     }
-    flush();
+
+    const mergedBlob = new Blob(allBlobs, { type: 'audio/mp3' });
+    const dlUrl = URL.createObjectURL(mergedBlob);
+    const a = document.createElement('a');
+    a.href = dlUrl;
+    a.download = "speech-audio.mp3";
+    a.click();
+    URL.revokeObjectURL(dlUrl);
+    engineStatus.textContent = "Export complete!";
   });
-  if (!any) throw new Error('This PDF has no selectable text. It may be a scan, and scans need OCR first.');
-  return { title: '', blocks };
-}
 
-async function parseFile(file) {
-  const ext = (file.name.split('.').pop() || '').toLowerCase();
-  let r;
-  if (ext === 'pdf') r = await parsePdf(file);
-  else if (ext === 'docx') r = await parseDocx(file);
-  else if (ext === 'epub') r = await parseEpub(file);
-  else if (['mobi', 'azw', 'azw3'].includes(ext)) r = await parseMobi(file);
-  else if (['html', 'htm'].includes(ext)) r = await parseHtml(file);
-  else if (['md', 'markdown'].includes(ext)) r = parseMarkdown(await readText(file));
-  else if (['txt', 'text', ''].includes(ext)) r = parsePlain(await readText(file));
-  else throw new Error(`.${ext} files are not supported yet.`);
-  r.title = (r.title || '').trim() || file.name.replace(/\.[^.]+$/, '');
-  return r;
-}
-
-/* =========================================================
-   Sentences, units, rendering
-   ========================================================= */
-const ABBR = new Set('mr mrs ms dr prof sr jr st vs etc e.g i.e fig no vol inc ltd co mt gen col capt sgt lt rev hon approx dept est ch pp al cf ca jan feb mar apr jun jul aug sep sept oct nov dec'.split(' '));
-function splitSentences(text) {
-  const out = []; let start = 0; const re = /[.!?…]+["'”’)\]]*(?:\s+|$)|\n+/g; let m;
-  while ((m = re.exec(text))) {
-    const end = m.index + m[0].length, term = m[0].match(/^[.!?…]+/);
-    if (term && term[0] === '.') {
-      const before = text.slice(start, m.index);
-      const w = (before.match(/([A-Za-z][A-Za-z.]*)$/) || [])[1] || '';
-      if (ABBR.has(w.toLowerCase()) || (w.length === 1 && /[A-Z]/.test(w))) continue;
-      if (/^[a-z]/.test(text.slice(end, end + 1))) continue;
-    }
-    const piece = text.slice(start, end).trim(); if (piece) out.push(piece); start = end;
-  }
-  const rest = text.slice(start).trim(); if (rest) out.push(rest);
-  return out;
-}
-const hasWords = t => /[\p{L}\p{N}]/u.test(t);
-const countWords = t => (t.match(/\S+/g) || []).length;
-
-let doc = null;           // {id,title,blocks,words}
-let units = [];           // {text,b,speak,pause,w}
-let spans = [];           // DOM spans per unit
-let wordsBefore = [];     // cumulative words
-let idx = 0;
-let tocItems = [];
-
-function render() {
-  units = []; const parts = []; let list = null; const first = [];
-  const closeList = () => { if (list) { parts.push(`</${list}>`); list = null; } };
-  const sentHtml = (b, bi) => {
-    const ss = splitSentences(b.text); const pauseEnd = b.t[0] === 'h' && b.t.length === 2 ? 650 : (b.t === 'li' || b.t === 'tr') ? 220 : 380;
-    return ss.map((s, k) => { units.push({ text: s, b: bi, speak: hasWords(s), pause: k === ss.length - 1 ? pauseEnd : 0, w: countWords(s) }); return `<span class="s" data-i="${units.length - 1}">${esc(s)}</span>`; }).join(' ');
-  };
-  doc.blocks.forEach((b, bi) => {
-    first[bi] = units.length;
-    if (b.t === 'li') { const tag = b.ordered ? 'ol' : 'ul'; if (list !== tag) { closeList(); parts.push(`<${tag}>`); list = tag; } parts.push(`<li>${sentHtml(b, bi)}</li>`); return; }
-    closeList();
-    if (b.t === 'hr') parts.push('<hr>');
-    else if (b.t === 'pg') parts.push(`<div class="pg">${esc(b.text)}</div>`);
-    else if (b.t === 'code') {
-      if (S.readCode) { const ls2 = b.text.split('\n').map(l => { if (!l.trim()) return ''; units.push({ text: l.trim(), b: bi, speak: hasWords(l), pause: 120, w: countWords(l) }); return `<span class="s" data-i="${units.length - 1}">${esc(l)}</span>`; }); parts.push(`<pre>${ls2.join('\n')}</pre>`); }
-      else parts.push(`<pre>${esc(b.text)}</pre>`);
-    }
-    else if (b.t === 'quote') parts.push(`<blockquote>${sentHtml(b, bi)}</blockquote>`);
-    else if (b.t === 'tr') parts.push(`<p class="tr">${sentHtml(b, bi)}</p>`);
-    else if (/^h[1-6]$/.test(b.t)) { const lv = clamp(+b.t[1] + 1, 2, 6); parts.push(`<h${lv}>${sentHtml(b, bi)}</h${lv}>`); }
-    else parts.push(`<p>${sentHtml(b, bi)}</p>`);
+  // Event Listeners
+  rawText.addEventListener('input', () => {
+    currentIndex = 0;
+    updateDocumentView();
   });
-  closeList();
-  const page = $('#page'); page.innerHTML = parts.join('\n');
-  spans = Array.from(page.querySelectorAll('.s'));
-  wordsBefore = []; let acc = 0; units.forEach((u, i) => { wordsBefore[i] = acc; acc += u.w; }); wordsBefore.push(acc);
-  doc.words = acc;
-  // contents
-  const heads = doc.blocks.map((b, i) => ({ b, i })).filter(x => /^h[1-6]$/.test(x.b.t));
-  let lvl = 2; if (heads.filter(h => +h.b.t[1] <= 2).length < 3) lvl = 3;
-  tocItems = heads.filter(h => +h.b.t[1] <= lvl).map(h => ({ text: h.b.text, level: +h.b.t[1], unit: first[h.i] }));
-  $('#tocBtn').hidden = tocItems.length < 2;
-  const seek = $('#seek'); seek.max = Math.max(0, units.length - 1);
-}
 
-/* =========================================================
-   Pronunciation + speech text
-   ========================================================= */
-let dictRules = [];
-function buildDict() {
-  dictRules = [];
-  for (const line of (S.dict || '').split('\n')) {
-    const m = line.match(/^\s*(.+?)\s*=\s*(.+?)\s*$/); if (!m) continue;
-    const src = m[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    dictRules.push([new RegExp(/^\w/.test(m[1]) && /\w$/.test(m[1]) ? `\\b${src}\\b` : src, 'gi'), m[2]]);
-  }
-}
-function speechText(u) {
-  let t = u.text.replace(/https?:\/\/\S+/g, ' link ').replace(/\bwww\.\S+/g, ' link ').replace(/\[\d{1,3}\]/g, '').replace(/[­​-‍﻿]/g, '').replace(/\s+/g, ' ').trim();
-  for (const [re, r] of dictRules) t = t.replace(re, r);
-  return hasWords(t) ? t : '';
-}
-
-/* =========================================================
-   Natural voice (Kokoro in a Web Worker)
-   ========================================================= */
-const VOICES = [
-  ['US, female', [['af_heart', 'Heart', 'A'], ['af_bella', 'Bella', 'A-'], ['af_nicole', 'Nicole', 'B-'], ['af_sarah', 'Sarah', 'C+'], ['af_kore', 'Kore', 'C+'], ['af_aoede', 'Aoede', 'C+'], ['af_sky', 'Sky', 'C-'], ['af_alloy', 'Alloy', 'C'], ['af_nova', 'Nova', 'C']]],
-  ['US, male', [['am_fenrir', 'Fenrir', 'C+'], ['am_michael', 'Michael', 'C+'], ['am_puck', 'Puck', 'C+']]],
-  ['UK, female', [['bf_emma', 'Emma', 'B-'], ['bf_isabella', 'Isabella', 'C']]],
-  ['UK, male', [['bm_george', 'George', 'C'], ['bm_fable', 'Fable', 'C']]]
-];
-const VNAME = {}; VOICES.forEach(g => g[1].forEach(v => VNAME[v[0]] = v[1]));
-
-const K = { worker: null, ready: false, readyP: null, res: null, rej: null, pending: new Map(), next: 1, files: {}, pct: 0, rtf: [], warned: false };
-const modelKey = () => 'tts:model:' + (S.hd ? 'hd' : 'lite');
-const modelInstalled = () => !!ls.get(modelKey(), false);
-const canGPU = () => !!navigator.gpu;
-
-function kReset() {
-  if (K.worker) { K.worker.terminate(); }
-  for (const p of K.pending.values()) p.rej(new Cancel());
-  Object.assign(K, { worker: null, ready: false, readyP: null, res: null, rej: null, files: {} , pct: 0 });
-  K.pending.clear();
-}
-function kInit() {
-  if (K.readyP) return K.readyP;
-  K.readyP = new Promise((res, rej) => { K.res = res; K.rej = rej; });
-  K.readyP.catch(() => {});
-  const src = $('#kworker').textContent.replace('__KOKORO_URL__', KOKORO_URL);
-  const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
-  let w; try { w = new Worker(url, { type: 'module' }); } catch (e) { K.rej(new Error('This browser cannot run the natural voice.')); K.readyP = null; return Promise.reject(e); }
-  K.worker = w; K.pct = 0; K.files = {};
-  w.onmessage = e => {
-    const m = e.data;
-    if (m.t === 'progress') {
-      if (m.status === 'initiate') K.files[m.file] = K.files[m.file] || { l: 0, t: 0 };
-      else if (m.status === 'progress') K.files[m.file] = { l: m.loaded, t: m.total };
-      else if (m.status === 'done' && K.files[m.file]) K.files[m.file].l = K.files[m.file].t;
-      let l = 0, t = 0; for (const f of Object.values(K.files)) { l += f.l; t += f.t; }
-      K.pct = t ? Math.round(l / t * 100) : 0; paintDownload();
-    } else if (m.t === 'ready') {
-      K.ready = true; ls.set(modelKey(), true); K.res(); paintDownload();
-      try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
-    } else if (m.t === 'initError') {
-      const e2 = new Error(m.msg); K.rej(e2); const keep = K.worker; kReset(); if (keep) keep.terminate(); paintDownload(e2.message);
-    } else if (m.t === 'audio') {
-      const p = K.pending.get(m.id); if (!p) return; K.pending.delete(m.id);
-      const data = new Float32Array(m.buf);
-      K.rtf.push((data.length / m.sr) / (m.ms / 1000)); if (K.rtf.length > 6) K.rtf.shift();
-      p.res({ data, sr: m.sr });
-    } else if (m.t === 'genError') {
-      const p = K.pending.get(m.id); if (p) { K.pending.delete(m.id); p.rej(new Error(m.msg)); }
-    } else if (m.t === 'dropped') {
-      m.ids.forEach(id => { const p = K.pending.get(id); if (p) { K.pending.delete(id); p.rej(new Cancel()); } });
-    }
-  };
-  w.onerror = ev => { K.rej(new Error('The natural voice failed to start. Check your connection and try again.')); kReset(); paintDownload('The natural voice failed to start. Check your connection and try again.'); };
-  w.postMessage({ t: 'init', dtype: S.hd ? 'fp32' : 'q8', device: S.hd ? 'webgpu' : 'wasm' });
-  return K.readyP;
-}
-function kGen(text, voice, speed) {
-  return new Promise((res, rej) => { const id = K.next++; K.pending.set(id, { res, rej }); K.worker.postMessage({ t: 'gen', id, text, voice, speed }); });
-}
-function kClear() { if (K.worker) K.worker.postMessage({ t: 'clear' }); }
-
-function paintDownload(err) {
-  const busyDl = !!K.readyP && !K.ready;
-  for (const [bar, msg, btn] of [['#natBar', '#natMsg', '#natGo'], ['#natBar2', '#natMsg2', '#natGo2']]) {
-    $(bar).hidden = !busyDl; $(bar + ' i').style.width = K.pct + '%';
-    $(btn).disabled = busyDl;
-    $(msg).textContent = err ? err : busyDl ? (K.pct ? `Downloading ${K.pct}%` : 'Starting…') : '';
-    $(msg).style.color = err ? 'var(--danger)' : '';
-  }
-  if (busyDl) setStatus(K.pct ? `Loading voice ${K.pct}%` : 'Loading voice…'); else if (!playing) setStatus('');
-  updateEngineUI();
-}
-async function downloadNatural() {
-  try { await kInit(); S.engine = 'natural'; saveS(); updateEngineUI(); toast('Natural voice ready. It now works offline.'); }
-  catch (e) { toast(e.message, true, 5000); }
-}
-
-/* =========================================================
-   Device voices (speechSynthesis)
-   ========================================================= */
-const JUNK = /^(Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Wobble|Good News|Jester|Organ|Superstar|Trinoids|Whisper|Zarvox|Deranged|Hysterical|Fred|Junior|Kathy|Ralph|Princess|Agnes|Bruce|Vicki)\b/;
-const NICE = /(premium|enhanced|natural|neural|online|siri)/i;
-function deviceVoices() {
-  if (!('speechSynthesis' in window)) return [];
-  let vs = speechSynthesis.getVoices();
-  if (!S.allVoices) {
-    const lang = (navigator.language || 'en').slice(0, 2).toLowerCase();
-    const f = vs.filter(v => !JUNK.test(v.name) && (v.lang || '').toLowerCase().startsWith(lang) || (!JUNK.test(v.name) && /^en/i.test(v.lang)));
-    if (f.length) vs = f;
-  }
-  return vs.slice().sort((a, b) => (NICE.test(b.name) - NICE.test(a.name)) || a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name));
-}
-function currentDeviceVoice() {
-  const all = speechSynthesis.getVoices();
-  return all.find(v => v.voiceURI === S.voiceD) || deviceVoices()[0] || null;
-}
-
-/* =========================================================
-   Playback engine
-   ========================================================= */
-let audioCtx = null, gainNode = null, analyser = null, curSrc = null, curUtt = null;
-let runId = 0, playing = false, paused = false, exporting = false, buffering = false;
-let waiters = [];
-const cache = new Map();
-const AHEAD = 3;
-
-function ac() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    gainNode = audioCtx.createGain(); analyser = audioCtx.createAnalyser(); analyser.fftSize = 512;
-    gainNode.connect(analyser); analyser.connect(audioCtx.destination);
-  }
-  gainNode.gain.value = S.volume;
-  return audioCtx;
-}
-function stopAudioNow() {
-  if (curSrc) { try { curSrc.stop(); } catch {} curSrc = null; }
-  if ('speechSynthesis' in window && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel();
-  curUtt = null;
-}
-function wakeWaiters() { const w = waiters; waiters = []; w.forEach(f => f()); }
-async function waitUnpaused(my) { while (paused && my === runId) await new Promise(r => waiters.push(r)); }
-async function pauseFor(ms, my) {
-  const end = performance.now() + ms;
-  while (performance.now() < end) { if (my !== runId) return; await waitUnpaused(my); await sleep(Math.min(60, Math.max(0, end - performance.now()))); }
-}
-
-const ck = i => `${S.voiceK}|${S.speed}|${i}`;
-function getAudio(i) {
-  const key = ck(i); let p = cache.get(key);
-  if (!p) {
-    const text = speechText(units[i]);
-    p = kGen(text, S.voiceK, S.speed); cache.set(key, p);
-    p.catch(() => { if (cache.get(key) === p) cache.delete(key); });
-  }
-  return p;
-}
-function prefetch(i) {
-  for (let k = i; k < Math.min(units.length, i + AHEAD); k++) if (units[k].speak && speechText(units[k])) getAudio(k).catch(() => {});
-  for (const key of cache.keys()) { const n = +key.split('|')[2]; if (n < i - 1 || n > i + AHEAD + 4) cache.delete(key); }
-}
-function invalidateAudio() { cache.clear(); kClear(); }
-
-async function playBuffer(a, my) {
-  const ctx = ac(); if (ctx.state === 'suspended' && !paused) await ctx.resume();
-  const ab = ctx.createBuffer(1, a.data.length, a.sr); ab.copyToChannel(a.data, 0);
-  const src = ctx.createBufferSource(); src.buffer = ab; src.connect(gainNode); curSrc = src;
-  await new Promise(res => { src.onended = res; src.start(); });
-  if (curSrc === src) curSrc = null;
-}
-
-async function speakNatural(i, my) {
-  prefetch(i);
-  const p = getAudio(i);
-  let timer = setTimeout(() => { if (my === runId) setBuffering(true); }, 250);
-  let a; try { a = await p; } finally { clearTimeout(timer); setBuffering(false); }
-  if (my !== runId) throw new Cancel();
-  prefetch(i + 1);
-  await playBuffer(a, my);
-}
-
-function splitForDevice(t, max = 220) {
-  if (t.length <= max) return [t];
-  const toks = t.match(/[^,;:]+[,;:]?\s*/g) || [t]; const out = []; let cur = '';
-  for (const x of toks) { if ((cur + x).length > max && cur) { out.push(cur.trim()); cur = ''; } cur += x; }
-  if (cur.trim()) out.push(cur.trim()); return out;
-}
-function utterOnce(text) {
-  return new Promise(res => {
-    const u = new SpeechSynthesisUtterance(text); u.rate = S.speed; u.volume = S.volume;
-    const v = currentDeviceVoice(); if (v) { u.voice = v; u.lang = v.lang; }
-    u.onend = u.onerror = () => res(); curUtt = u; speechSynthesis.speak(u);
+  speedSlider.addEventListener('input', (e) => {
+    speedVal.textContent = e.target.value;
   });
-}
-async function speakDevice(i, my) {
-  const parts = splitForDevice(speechText(units[i]));
-  for (let k = 0; k < parts.length; k++) {
-    for (;;) {
-      await utterOnce(parts[k]);
-      if (my !== runId) throw new Cancel();
-      if (paused) { await waitUnpaused(my); if (my !== runId) throw new Cancel(); continue; }
-      break;
-    }
+
+  voiceSelect.addEventListener('change', () => {
+    clearCache();
+    viewer.querySelectorAll('.sentence').forEach(el => el.classList.remove('buffered'));
+    if (sentences.length > 0) fetchSentenceAudio(currentIndex);
+  });
+
+  btnPlay.addEventListener('click', () => {
+    isPlaying ? stopPlayback() : playCurrentSentence();
+  });
+
+  btnPrev.addEventListener('click', () => jumpTo(currentIndex - 1));
+  btnNext.addEventListener('click', () => jumpTo(currentIndex + 1));
+
+  // File drag & drop
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length) handleFile(e.target.files[0]);
+  });
+
+  function handleFile(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      rawText.value = e.target.result;
+      currentIndex = 0;
+      updateDocumentView();
+    };
+    reader.readAsText(file);
   }
-}
-
-async function ensureEngine() {
-  if (S.engine !== 'natural') return;
-  if (K.ready) return;
-  setStatus('Loading voice…');
-  try { await kInit(); } catch (e) {
-    S.engine = 'device'; saveS(); updateEngineUI();
-    toast('Natural voice could not load, so the device voice is being used.', true, 5000);
-  }
-  setStatus('');
-}
-
-async function play(from = idx) {
-  if (!units.length) return;
-  if (exporting) { toast('Wait for the audio file to finish, or cancel it first.'); return; }
-  const my = ++runId; stopAudioNow(); wakeWaiters();
-  idx = clamp(from, 0, units.length - 1); playing = true; paused = false; paint();
-  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-  else if (S.engine === 'natural') ac();
-  await ensureEngine(); if (my !== runId) return;
-  try {
-    while (idx < units.length && my === runId) {
-      const u = units[idx]; mark(idx); paintPos();
-      if (u.speak && speechText(u)) {
-        if (S.engine === 'natural') await speakNatural(idx, my); else await speakDevice(idx, my);
-      }
-      if (my !== runId) return;
-      await waitUnpaused(my); if (my !== runId) return;
-      if (u.pause) await pauseFor(u.pause / Math.max(S.speed, .7), my);
-      if (my !== runId) return;
-      if (sleepAt && Date.now() >= sleepAt) { sleepAt = 0; $('#sleep').value = '0'; idx++; pause(); toast('Sleep timer finished.'); savePos(); return; }
-      idx++; if (idx % 10 === 0) savePos();
-    }
-    if (my === runId) { playing = false; paused = false; idx = 0; ls.del('pos:' + doc.id); mark(0, true); paint(); toast('Finished reading.'); }
-  } catch (e) {
-    if (e.name === 'Cancel' || my !== runId) return;
-    playing = false; paused = false; paint(); toast(e.message || 'Playback failed.', true, 5000);
-  }
-}
-function pause() {
-  if (!playing || paused) return;
-  paused = true;
-  if (S.engine === 'natural' && audioCtx) audioCtx.suspend();
-  else if ('speechSynthesis' in window) speechSynthesis.cancel();
-  savePos(); paint();
-}
-function resume() {
-  if (!paused) return;
-  paused = false;
-  if (S.engine === 'natural' && audioCtx) audioCtx.resume();
-  wakeWaiters(); paint();
-}
-function stopAll() { runId++; stopAudioNow(); wakeWaiters(); playing = false; paused = false; setBuffering(false); paint(); }
-function toggle() {
-  if (!doc) return;
-  if (playing && !paused) pause(); else if (playing && paused) resume(); else play(idx);
-}
-function seekTo(i, autoplay) {
-  i = clamp(i, 0, units.length - 1);
-  if (playing || autoplay) { play(i); } else { idx = i; mark(i); paintPos(); savePos(); }
-}
-const step = d => { let i = idx + d; if (i < 0) i = 0; if (i >= units.length) return; seekTo(i, playing); };
-
-/* ---------- UI paint ---------- */
-let lastMarked = -1;
-function mark(i, clear) {
-  if (spans[lastMarked]) spans[lastMarked].classList.remove('on');
-  lastMarked = -1; if (clear) return;
-  const el = spans[i]; if (!el) return;
-  el.classList.add('on'); lastMarked = i;
-  if (S.autoScroll && playing) {
-    const r = el.getBoundingClientRect(), dockTop = innerHeight - 190;
-    if (r.top < 90 || r.bottom > dockTop) el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-  }
-}
-function setStatus(t) { $('#statusTxt').textContent = t || ''; }
-function setBuffering(b) { buffering = b; $('#playBtn').classList.toggle('buffering', b); if (b) setStatus('Generating…'); else if (!(K.readyP && !K.ready)) setStatus(''); }
-const ICON_PLAY = '<path class="f" d="M8 4.8v14.4a.6.6 0 0 0 .9.5l11.6-7.2a.6.6 0 0 0 0-1L8.9 4.3a.6.6 0 0 0-.9.5z"/>';
-const ICON_PAUSE = '<rect class="f" x="6" y="4.5" width="4.2" height="15" rx="1.2"/><rect class="f" x="13.8" y="4.5" width="4.2" height="15" rx="1.2"/>';
-function paint() {
-  const on = playing && !paused;
-  $('#playIcon').innerHTML = on ? ICON_PAUSE : ICON_PLAY;
-  $('#playBtn').setAttribute('aria-label', on ? 'Pause' : 'Play');
-  keepAlive(on); wakeLock(on && S.wake); msState();
-  if (!on) $('#playBtn').style.setProperty('--lvl', 0);
-  paintPos(); levelLoop();
-}
-function paintPos() {
-  if (!doc) return;
-  const n = units.length, seek = $('#seek');
-  $('#posTxt').textContent = `${Math.min(idx + 1, n)} / ${n}`;
-  if (document.activeElement !== seek || !seekDrag) { seek.value = idx; }
-  seek.style.setProperty('--p', n > 1 ? (idx / (n - 1) * 100) + '%' : '0%');
-  const left = (wordsBefore[n] - wordsBefore[idx]) / (160 * S.speed);
-  $('#leftTxt').textContent = left < 1 ? 'Under a minute left' : left < 90 ? `${Math.round(left)} min left` : `${(left / 60).toFixed(1)} hr left`;
-  $('#speedChip').textContent = S.speed.toFixed(2).replace(/0$/, '') + '×';
-  $('#voiceChip').textContent = S.engine === 'natural' ? (VNAME[S.voiceK] || 'Voice') : ((currentDeviceVoice() || {}).name || 'Voice').replace(/\s*\(.*\)/, '').replace(/^(Microsoft|Google)\s+/, '');
-}
-let lvlRaf = 0;
-function levelLoop() {
-  cancelAnimationFrame(lvlRaf);
-  if (!(playing && !paused) || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const btn = $('#playBtn'), buf = new Uint8Array(256);
-  const tick = () => {
-    if (!(playing && !paused)) return;
-    let lvl = 0.25 + 0.1 * Math.sin(performance.now() / 380);
-    if (S.engine === 'natural' && analyser && curSrc) { analyser.getByteTimeDomainData(buf); let s = 0; for (const v of buf) { const x = (v - 128) / 128; s += x * x; } lvl = clamp(Math.sqrt(s / buf.length) * 4, 0, 1); }
-    btn.style.setProperty('--lvl', lvl.toFixed(3)); lvlRaf = requestAnimationFrame(tick);
-  };
-  tick();
-}
-
-/* ---------- position memory ---------- */
-function savePos() { if (doc) ls.set('pos:' + doc.id, idx); }
-addEventListener('pagehide', savePos);
-document.addEventListener('visibilitychange', () => { if (document.hidden) savePos(); });
-
-/* ---------- keep-alive audio, media session, wake lock ---------- */
-let keepEl = null;
-function keepAlive(on) {
-  try {
-    if (!keepEl) {
-      const n = 8000, b = new DataView(new ArrayBuffer(44 + n)); const w = (o, s) => [...s].forEach((c, k) => b.setUint8(o + k, c.charCodeAt(0)));
-      w(0, 'RIFF'); b.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); b.setUint32(16, 16, true); b.setUint16(20, 1, true); b.setUint16(22, 1, true); b.setUint32(24, 8000, true); b.setUint32(28, 8000, true); b.setUint16(32, 1, true); b.setUint16(34, 8, true); w(36, 'data'); b.setUint32(40, n, true);
-      for (let i = 0; i < n; i++) b.setUint8(44 + i, 128);
-      keepEl = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' }))); keepEl.loop = true; keepEl.volume = 0.01;
-    }
-    if (on) keepEl.play().catch(() => {}); else keepEl.pause();
-  } catch {}
-}
-function msState() {
-  if (!('mediaSession' in navigator) || !doc) return;
-  try {
-    navigator.mediaSession.metadata = new MediaMetadata({ title: doc.title, artist: 'Reader', artwork: [{ src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' }] });
-    navigator.mediaSession.playbackState = playing && !paused ? 'playing' : 'paused';
-  } catch {}
-}
-if ('mediaSession' in navigator) {
-  const set = (a, f) => { try { navigator.mediaSession.setActionHandler(a, f); } catch {} };
-  set('play', () => toggle()); set('pause', () => toggle()); set('previoustrack', () => step(-1)); set('nexttrack', () => step(1));
-}
-let wl = null;
-async function wakeLock(on) {
-  try {
-    if (on && 'wakeLock' in navigator && !wl) { wl = await navigator.wakeLock.request('screen'); wl.addEventListener('release', () => { wl = null; }); }
-    else if (!on && wl) { await wl.release(); wl = null; }
-  } catch {}
-}
-document.addEventListener('visibilitychange', () => { if (!document.hidden && playing && !paused && S.wake) wakeLock(true); });
-
-/* ---------- sleep timer ---------- */
-let sleepAt = 0;
-$('#sleep').onchange = e => { const m = +e.target.value; sleepAt = m ? Date.now() + m * 60000 : 0; if (m) toast(`Sleep timer set for ${m} minutes.`); };
-
-/* =========================================================
-   Loading documents
-   ========================================================= */
-async function openDoc(d, restore = true) {
-  stopAll(); invalidateAudio();
-  doc = { id: d.id || hash(d.title + '|' + d.blocks.length + '|' + d.blocks.slice(0, 6).map(b => b.text).join('')), title: d.title, blocks: d.blocks };
-  buildDict(); render();
-  if (!units.length) { toast('No readable text was found in that file.', true); doc = null; return false; }
-  idx = restore ? clamp(ls.get('pos:' + doc.id, 0), 0, units.length - 1) : 0;
-  $('#docTitle').textContent = doc.title;
-  $('#docTitle').hidden = !!(doc.blocks[0] && doc.blocks[0].t === 'h1' && doc.blocks[0].text === doc.title);
-  const mins = doc.words / 160;
-  $('#docMeta').textContent = `${doc.words.toLocaleString()} words, about ${mins < 90 ? Math.max(1, Math.round(mins)) + ' min' : (mins / 60).toFixed(1) + ' hours'} at normal speed`;
-  $('#home').hidden = true; $('#reader').hidden = false; $('#dock').hidden = false; document.body.classList.remove('nodock');
-  document.title = doc.title + ' · Reader';
-  paint(); mark(idx, false);
-  if (idx > 0) { spans[idx] && spans[idx].scrollIntoView({ block: 'center' }); toast('Picked up where you left off.'); } else scrollTo(0, 0);
-  DB.save(doc).then(refreshRecent).catch(() => {});
-  return true;
-}
-function goHome() {
-  stopAll(); savePos(); doc = null; units = []; spans = [];
-  $('#reader').hidden = true; $('#dock').hidden = true; $('#home').hidden = false; $('#tocBtn').hidden = true;
-  document.body.classList.add('nodock'); document.title = 'Reader: text to speech'; scrollTo(0, 0); refreshRecent(); updateEngineUI();
-}
-async function loadFiles(files) {
-  files = [...files]; if (!files.length) return;
-  let first = null, fails = 0;
-  for (const f of files) {
-    try {
-      busy(`Opening ${f.name}…`);
-      const r = await parseFile(f);
-      if (!r.blocks.length) throw new Error('No readable text was found in that file.');
-      const d = { title: r.title, blocks: r.blocks };
-      if (!first) first = d; else { d.id = hash(d.title + '|' + d.blocks.length + '|' + d.blocks.slice(0, 6).map(b => b.text).join('')); d.words = d.blocks.reduce((a, b) => a + countWords(b.text), 0); await DB.save(d); }
-    } catch (e) { fails++; console.error(e); toast(`${f.name}: ${e.message}`, true, 5000); }
-  }
-  busy('');
-  if (first) { await openDoc(first); if (files.length > 1) toast(`Opened the first file. The other ${files.length - 1 - fails} are under Continue reading.`, false, 4500); }
-}
-
-/* ---------- home: recent list ---------- */
-async function refreshRecent() {
-  const metas = await DB.metas(), box = $('#recent'), ul = $('#recentList');
-  box.hidden = !metas.length; ul.innerHTML = '';
-  for (const m of metas) {
-    const li = document.createElement('li'); li.className = 'rec';
-    const pos = ls.get('pos:' + m.id, 0);
-    li.innerHTML = `<button class="open"><b>${esc(m.title)}</b><small>${(m.words || 0).toLocaleString()} words</small><div class="bar"><i></i></div></button><button class="del" aria-label="Remove ${esc(m.title)}"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>`;
-    li.querySelector('.open').onclick = async () => { busy('Opening…'); try { const r = await DB.get(m.id); await openDoc({ id: m.id, title: m.title, blocks: r.blocks }); } finally { busy(''); } };
-    li.querySelector('.del').onclick = async () => { await DB.del(m.id); refreshRecent(); };
-    ul.appendChild(li);
-    DB.get(m.id).then(r => { /* progress needs unit count; approximate with block position */ if (!r) return; const total = r.blocks.reduce((a, b) => a + (b.t === 'pg' || b.t === 'hr' ? 0 : splitSentences(b.text).length), 0); li.querySelector('.bar i').style.width = total ? Math.min(100, pos / total * 100) + '%' : '0%'; }).catch(() => {});
-  }
-}
-
-/* =========================================================
-   Settings UI
-   ========================================================= */
-function fillVoicesK() {
-  const sel = $('#voiceK'); sel.innerHTML = '';
-  VOICES.forEach(([g, list]) => { const og = document.createElement('optgroup'); og.label = g; list.forEach(([id, name, grade]) => { const o = document.createElement('option'); o.value = id; o.textContent = `${name} (${grade})` + (id === 'af_heart' ? ', recommended' : ''); og.appendChild(o); }); sel.appendChild(og); });
-  sel.value = S.voiceK;
-}
-function fillVoicesD() {
-  const sel = $('#voiceD'); sel.innerHTML = ''; const vs = deviceVoices();
-  vs.forEach(v => { const o = document.createElement('option'); o.value = v.voiceURI; o.textContent = `${v.name} (${v.lang})` + (NICE.test(v.name) ? ', higher quality' : ''); sel.appendChild(o); });
-  const cur = currentDeviceVoice(); if (cur) sel.value = cur.voiceURI;
-  if (!vs.length) sel.innerHTML = '<option>No voices found on this device</option>';
-}
-let tabShown = 'natural';
-function showTab(t) { tabShown = t; updateEngineUI(); }
-function updateEngineUI() {
-  const natOk = K.ready || modelInstalled();
-  const dl = !!K.readyP && !K.ready;
-  $('#tabNat').setAttribute('aria-checked', tabShown === 'natural'); $('#tabDev').setAttribute('aria-checked', tabShown === 'device');
-  $('#panNat').hidden = tabShown !== 'natural'; $('#panDev').hidden = tabShown !== 'device';
-  $('#natReady').hidden = !natOk; $('#natGet').hidden = natOk;
-  $('#variantBox').hidden = !canGPU(); $('#hdChk').checked = !!S.hd;
-  $('#natCard').hidden = natOk || !!doc;
-  $('#tabNat').textContent = S.engine === 'natural' ? 'Natural (in use)' : 'Natural';
-  $('#tabDev').textContent = S.engine === 'device' ? 'This device (in use)' : 'This device';
-  paintPos();
-}
-function openSettings(tab) {
-  fillVoicesK(); fillVoicesD();
-  $('#speed').value = S.speed; $('#speedOut').textContent = S.speed.toFixed(2).replace(/0$/, '') + '×';
-  $('#vol').value = S.volume; $('#volOut').textContent = Math.round(S.volume * 100) + '%';
-  $('#size').value = S.size; $('#sizeOut').textContent = Math.round(S.size * 100) + '%';
-  $('#autoScroll').checked = S.autoScroll; $('#readCode').checked = S.readCode; $('#wake').checked = S.wake; $('#allVoices').checked = S.allVoices;
-  $('#dict').value = S.dict; $('#exportBtn').disabled = !doc;
-  tabShown = tab || S.engine; updateEngineUI(); rangeFill();
-  $('#settings').showModal();
-}
-function rangeFill() { document.querySelectorAll('input[type=range]').forEach(r => { if (r.id === 'seek') return; r.style.setProperty('--p', ((r.value - r.min) / (r.max - r.min) * 100) + '%'); }); }
-function selectEngine(e) {
-  if (e === 'natural' && !(K.ready || modelInstalled())) { showTab('natural'); return; }
-  showTab(e); if (S.engine === e) return;
-  S.engine = e; saveS(); if (playing) { invalidateAudio(); play(idx); } updateEngineUI();
-  if (e === 'natural' && !K.readyP) kInit().catch(() => {});
-}
-$('#tabNat').onclick = () => selectEngine('natural');
-$('#tabDev').onclick = () => selectEngine('device');
-$('#settingsBtn').onclick = () => openSettings();
-$('#voiceChip').onclick = () => openSettings();
-$('#natGo').onclick = $('#natGo2').onclick = downloadNatural;
-document.querySelectorAll('dialog').forEach(d => { d.addEventListener('click', e => { if (e.target === d && d.id !== 'expDlg') d.close(); }); d.querySelectorAll('[data-close]').forEach(b => b.onclick = () => d.close()); });
-
-$('#voiceK').onchange = e => { S.voiceK = e.target.value; saveS(); invalidateAudio(); if (playing) play(idx); paintPos(); };
-$('#voiceD').onchange = e => { S.voiceD = e.target.value; saveS(); if (playing) { stopAudioNow(); play(idx); } paintPos(); };
-$('#allVoices').onchange = e => { S.allVoices = e.target.checked; saveS(); fillVoicesD(); };
-$('#hdChk').onchange = async e => {
-  S.hd = e.target.checked; saveS(); kReset(); invalidateAudio();
-  if (S.engine === 'natural' && !modelInstalled()) { S.engine = 'device'; saveS(); toast('HD mode needs its own download (about 330 MB). Use the download button first.'); }
-  else if (S.engine === 'natural') kInit().catch(() => {});
-  updateEngineUI();
-};
-$('#speed').oninput = e => { const v = +e.target.value; $('#speedOut').textContent = v.toFixed(2).replace(/0$/, '') + '×'; rangeFill(); };
-$('#speed').onchange = e => setSpeed(+e.target.value);
-function setSpeed(v) {
-  S.speed = clamp(Math.round(v * 20) / 20, .5, 2); saveS(); $('#speed').value = S.speed; $('#speedOut').textContent = S.speed.toFixed(2).replace(/0$/, '') + '×'; rangeFill();
-  invalidateAudio(); if (playing && !paused) play(idx); paintPos();
-}
-$('#vol').oninput = e => { S.volume = +e.target.value; $('#volOut').textContent = Math.round(S.volume * 100) + '%'; if (gainNode) gainNode.gain.value = S.volume; rangeFill(); saveS(); };
-$('#size').oninput = e => { S.size = +e.target.value; $('#sizeOut').textContent = Math.round(S.size * 100) + '%'; document.documentElement.style.setProperty('--fs', (1.2 * S.size) + 'rem'); rangeFill(); saveS(); };
-$('#autoScroll').onchange = e => { S.autoScroll = e.target.checked; saveS(); };
-$('#wake').onchange = e => { S.wake = e.target.checked; saveS(); wakeLock(playing && !paused && S.wake); };
-$('#readCode').onchange = e => { S.readCode = e.target.checked; saveS(); if (doc) { const b = units[idx] ? units[idx].b : 0; stopAll(); render(); idx = Math.max(0, units.findIndex(u => u.b >= b)); mark(idx); paint(); invalidateAudio(); } };
-$('#dict').onchange = e => { S.dict = e.target.value; saveS(); buildDict(); invalidateAudio(); };
-$('#speedChip').onclick = () => { const steps = [.8, 1, 1.2, 1.5, 1.8, 2]; const nx = steps.find(s => s > S.speed + .01) || steps[0]; setSpeed(nx); toast(`Speed ${nx}×`, false, 900); };
-$('#clearRecent').onclick = async () => { await DB.clear(); Object.keys(localStorage).filter(k => k.startsWith('pos:')).forEach(k => localStorage.removeItem(k)); refreshRecent(); toast('Reading history cleared.'); };
-$('#removeModel').onclick = async () => {
-  kReset(); invalidateAudio();
-  try { await caches.delete('transformers-cache'); await caches.delete('kokoro-voices'); } catch {}
-  ls.del('tts:model:lite'); ls.del('tts:model:hd'); S.engine = 'device'; saveS(); stopAll(); updateEngineUI(); paintDownload(); toast('Downloaded voice removed.');
-};
-
-/* ---------- previews ---------- */
-const SAMPLE = 'Hi, this is how I sound. I can read your documents aloud.';
-async function preview(kind) {
-  const was = playing && !paused; if (was) pause();
-  const my = ++runId; stopAudioNow();
-  try {
-    if (kind === 'natural') {
-      toast('Generating sample…', false, 1500); await kInit(); if (my !== runId) return;
-      const a = await kGen(SAMPLE, S.voiceK, S.speed); ac(); if (audioCtx.state === 'suspended') await audioCtx.resume(); await playBuffer(a, my);
-    } else { await utterOnce(SAMPLE); }
-  } catch (e) { if (e.name !== 'Cancel') toast(e.message, true); }
-}
-$('#previewK').onclick = () => preview('natural');
-$('#previewD').onclick = () => preview('device');
-
-/* ---------- contents ---------- */
-$('#tocBtn').onclick = () => {
-  const ul = $('#tocList'); ul.innerHTML = '';
-  let curI = -1; tocItems.forEach((t, k) => { if (t.unit <= idx) curI = k; });
-  tocItems.forEach((t, k) => { const li = document.createElement('li'); const b = document.createElement('button'); b.textContent = t.text; if (t.level >= 3) b.className = 'l3'; if (k === curI) b.classList.add('cur'); b.onclick = () => { $('#tocDlg').close(); seekTo(t.unit, true); setTimeout(() => spans[t.unit] && spans[t.unit].scrollIntoView({ block: 'center' }), 50); }; li.appendChild(b); ul.appendChild(li); });
-  $('#tocDlg').showModal();
-};
-
-/* =========================================================
-   Export to WAV (natural voice)
-   ========================================================= */
-let expCancel = false;
-$('#expCancel').onclick = () => { expCancel = true; };
-$('#exportBtn').onclick = async () => {
-  if (!doc) return;
-  if (!(K.ready || modelInstalled())) { toast('Download the natural voice first. Saving audio needs it.', true); return; }
-  $('#settings').close(); stopAll(); exporting = true; expCancel = false; invalidateAudio();
-  const dlg = $('#expDlg'), bar = $('#expBar'), msg = $('#expMsg'); dlg.showModal(); bar.style.width = '0%'; msg.textContent = 'Loading the voice…';
-  try {
-    await kInit();
-    const todo = units.map((u, i) => i).filter(i => units[i].speak && speechText(units[i]));
-    const parts = []; let samples = 0, sr = 24000; const t0 = performance.now();
-    for (let n = 0; n < todo.length; n++) {
-      if (expCancel) throw new Cancel();
-      const i = todo[n], a = await kGen(speechText(units[i]), S.voiceK, S.speed); sr = a.sr;
-      const pcm = new Int16Array(a.data.length); for (let k = 0; k < pcm.length; k++) pcm[k] = Math.max(-1, Math.min(1, a.data[k])) * 32767;
-      parts.push(pcm); samples += pcm.length;
-      const gap = Math.round(sr * Math.max(units[i].pause, 80) / 1000 / Math.max(S.speed, .7)); parts.push(new Int16Array(gap)); samples += gap;
-      const el = (performance.now() - t0) / 1000, eta = el / (n + 1) * (todo.length - n - 1);
-      bar.style.width = ((n + 1) / todo.length * 100) + '%'; msg.textContent = `Sentence ${n + 1} of ${todo.length}. About ${eta < 90 ? Math.ceil(eta) + ' seconds' : Math.ceil(eta / 60) + ' minutes'} left.`;
-    }
-    const h = new DataView(new ArrayBuffer(44)); const w = (o, s) => [...s].forEach((c, k) => h.setUint8(o + k, c.charCodeAt(0)));
-    w(0, 'RIFF'); h.setUint32(4, 36 + samples * 2, true); w(8, 'WAVEfmt '); h.setUint32(16, 16, true); h.setUint16(20, 1, true); h.setUint16(22, 1, true); h.setUint32(24, sr, true); h.setUint32(28, sr * 2, true); h.setUint16(32, 2, true); h.setUint16(34, 16, true); w(36, 'data'); h.setUint32(40, samples * 2, true);
-    const blob = new Blob([h, ...parts], { type: 'audio/wav' }); const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = (doc.title.replace(/[^\p{L}\p{N} _-]+/gu, '').trim().slice(0, 80) || 'reader-audio') + '.wav'; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 60000); toast('Audio file saved.');
-  } catch (e) { if (e.name === 'Cancel') toast('Cancelled.'); else toast(e.message || 'Could not save audio.', true, 5000); }
-  finally { exporting = false; dlg.close(); kClear(); }
-};
-
-/* =========================================================
-   Wiring: home, input, keyboard
-   ========================================================= */
-$('#homeBtn').onclick = () => { if (doc) goHome(); };
-const fileInput = $('#file'), drop = $('#drop');
-drop.onclick = e => { if (e.target !== fileInput) fileInput.click(); };
-drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } };
-fileInput.onchange = () => { loadFiles(fileInput.files); fileInput.value = ''; };
-['dragenter', 'dragover'].forEach(t => document.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
-['dragleave', 'drop'].forEach(t => document.addEventListener(t, e => { e.preventDefault(); if (t === 'drop' || e.target === document.documentElement) drop.classList.remove('over'); }));
-document.addEventListener('drop', e => { if (e.dataTransfer && e.dataTransfer.files.length) loadFiles(e.dataTransfer.files); });
-
-const paste = $('#paste');
-const pasteStat = () => { const w = countWords(paste.value); $('#pasteStat').textContent = `${w.toLocaleString()} word${w === 1 ? '' : 's'}`; };
-paste.oninput = pasteStat;
-$('#clearBtn').onclick = () => { paste.value = ''; pasteStat(); paste.focus(); };
-$('#readBtn').onclick = async () => {
-  const t = paste.value.trim(); if (!t) { toast('Paste or type some text first.'); paste.focus(); return; }
-  const r = parsePlain(t); const title = r.title || (t.replace(/\s+/g, ' ').slice(0, 40).replace(/\s+\S*$/, '') + (t.length > 40 ? '…' : ''));
-  if (await openDoc({ title, blocks: r.blocks }, false)) play(0);
-};
-
-const seekEl = $('#seek'); let seekDrag = false;
-seekEl.oninput = () => { seekDrag = true; const i = +seekEl.value; $('#posTxt').textContent = `${i + 1} / ${units.length}`; seekEl.style.setProperty('--p', (units.length > 1 ? i / (units.length - 1) * 100 : 0) + '%'); mark(i); if (!playing) { spans[i] && spans[i].scrollIntoView({ block: 'center' }); } };
-seekEl.onchange = () => { seekDrag = false; seekTo(+seekEl.value, playing); };
-$('#playBtn').onclick = toggle;
-$('#prevBtn').onclick = () => step(-1);
-$('#nextBtn').onclick = () => step(1);
-$('#page').addEventListener('click', e => { const s = e.target.closest('.s'); if (s) seekTo(+s.dataset.i, true); });
-
-document.addEventListener('keydown', e => {
-  if (!doc || e.metaKey || e.ctrlKey || e.altKey) return;
-  if (document.querySelector('dialog[open]')) return;
-  const t = e.target; if (t.closest && t.closest('textarea,select,input:not([type=range]),[contenteditable]')) return;
-  if (e.key === ' ' && !(t.tagName === 'BUTTON')) { e.preventDefault(); toggle(); }
-  else if (e.key === 'ArrowRight' && t.id !== 'seek') { e.preventDefault(); step(1); }
-  else if (e.key === 'ArrowLeft' && t.id !== 'seek') { e.preventDefault(); step(-1); }
-  else if (e.key === ']') setSpeed(S.speed + .1);
-  else if (e.key === '[') setSpeed(S.speed - .1);
-});
-
-/* =========================================================
-   Boot
-   ========================================================= */
-applyTheme();
-document.documentElement.style.setProperty('--fs', (1.2 * S.size) + 'rem');
-buildDict(); pasteStat(); updateEngineUI(); refreshRecent();
-if ('speechSynthesis' in window) { speechSynthesis.onvoiceschanged = () => { if ($('#settings').open) fillVoicesD(); paintPos(); }; }
-// If the natural voice is already installed and in use, warm it up while the page is idle.
-if (S.engine === 'natural' && modelInstalled()) (window.requestIdleCallback || setTimeout)(() => kInit().catch(() => {}));
-// Offline support
-if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
-// Hint when this device generates slower than real time.
-setInterval(() => { if (playing && K.rtf.length >= 4 && !K.warned) { const avg = K.rtf.reduce((a, b) => a + b, 0) / K.rtf.length; if (avg < 1) { K.warned = true; toast('This device generates speech slower than real time, so you may hear pauses. HD mode or a lower speed can help.', false, 6000); } } }, 2000);
 </script>
 </body>
 </html>
