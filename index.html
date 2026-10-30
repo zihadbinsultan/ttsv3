@@ -272,7 +272,7 @@ body.nodock .toast{bottom:24px}
           <select id="voiceK"></select>
           <div class="vgrid"><button class="btn sm" id="previewK">Hear a sample</button></div>
           <div id="variantBox" style="margin-top:14px" hidden>
-            <label class="chk"><input type="checkbox" id="hdChk"><span>Use my graphics chip<small>Much faster, so there are no pauses between sentences. It needs a one-time download of about 330 MB. Turn it off if the voice stutters.</small></span></label>
+            <label class="chk"><input type="checkbox" id="hdChk"><span>Use my graphics chip<small>Faster, but it can make a laptop stutter while it works. It needs a one-time download of about 330 MB. If your screen starts lagging, the app turns this off by itself.</small></span></label>
           </div>
         </div>
         <div id="natGet">
@@ -858,17 +858,17 @@ const VOICES = [
 const VNAME = {}; VOICES.forEach(g => g[1].forEach(v => VNAME[v[0]] = v[1]));
 
 const canGPU = () => !!navigator.gpu;
-const useHD = () => canGPU() && S.gpu !== false;           // graphics chip when available: much faster
+const useHD = () => canGPU() && S.gpu === true;            // graphics chip is opt-in: it is fast but can make a laptop lag
 const modelKey = () => 'tts:model:' + (useHD() ? 'hd' : 'lite');
 const modelInstalled = () => !!ls.get(modelKey(), false);
 const modelMB = () => useHD() ? 330 : 90;
 const poolSize = () => {
-  if (useHD()) return 1;                                    // the GPU is the bottleneck, one worker keeps it busy
+  if (useHD()) return 1;
   const hc = navigator.hardwareConcurrency || 4, mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  return clamp(Math.floor(hc / 2), 1, mobile ? 2 : 4);    // CPU mode: several workers generate in parallel
+  return mobile ? 1 : clamp(Math.floor(hc / 4), 1, 2);    // gentle on the machine: at most 2 workers on a computer, 1 on a phone
 };
 
-const K = { workers: [], ready: false, readyP: null, queue: [], next: 1, files: {}, pct: 0, rtf: [], warned: false };
+const K = { workers: [], ready: false, readyP: null, queue: [], next: 1, files: {}, pct: 0, rtf: [], warned: false, cap: 99, jobs: 0, lagFixes: 0, lagTold: false };
 
 function startWorker(primary) {
   return new Promise((res, rej) => {
@@ -889,7 +889,7 @@ function startWorker(primary) {
       else if (m.t === 'initError') rej(new Error(m.msg));
       else if (m.t === 'audio') {
         const j = rec.job; rec.job = null; rec.busy = false;
-        if (j) { const data = new Float32Array(m.buf); K.rtf.push((data.length / m.sr) / (m.ms / 1000)); if (K.rtf.length > 8) K.rtf.shift(); j.res({ data, sr: m.sr }); }
+        if (j) { K.jobs++; const data = new Float32Array(m.buf); K.rtf.push((data.length / m.sr) / (m.ms / 1000)); if (K.rtf.length > 8) K.rtf.shift(); j.res({ data, sr: m.sr }); }
         dispatch();
       } else if (m.t === 'genError') { const j = rec.job; rec.job = null; rec.busy = false; if (j) j.rej(new Error(m.msg)); dispatch(); }
     };
@@ -899,7 +899,7 @@ function startWorker(primary) {
 }
 // Hand queued jobs (lowest priority number first, i.e. earliest in the document) to idle workers.
 function dispatch() {
-  for (const r of K.workers) {
+  for (const r of K.workers.slice(0, K.cap)) {
     if (!r.ready || r.busy || !K.queue.length) continue;
     let bi = 0; for (let k = 1; k < K.queue.length; k++) if (K.queue[k].prio < K.queue[bi].prio) bi = k;
     const j = K.queue.splice(bi, 1)[0]; r.busy = true; r.job = j;
@@ -1031,6 +1031,8 @@ function avgSpeed() {   // how many times faster than real time we are generatin
   if (!K.rtf.length) return 0;
   return K.rtf.reduce((a, b) => a + b, 0) / K.rtf.length * Math.max(1, K.workers.filter(w => w.ready).length);
 }
+// Fast devices only keep about 12 seconds queued and idle in between. Slow ones keep a longer queue.
+function aheadTarget() { const a = avgSpeed(); return a && a < 2 ? 40 : 12; }
 function cushion() { const a = avgSpeed(); if (!a) return useHD() ? 1 : 2; return a < 1.2 ? 3 : a < 2.5 ? 2 : 1; }
 
 function startTicker(my) {
@@ -1055,12 +1057,12 @@ async function playNatural(my) {
     }
     return plan[k];
   };
-  const prefetch = k => { const n = Math.max(4, K.workers.length * 3); for (let q = k; q < k + n; q++) { const g = planAt(q); if (!g) break; getGroup(g[0], g[1]); } };
+  const prefetch = k => { const n = Math.min(K.cap, Math.max(1, K.workers.length)) + 1; for (let q = k; q < k + n; q++) { const g = planAt(q); if (!g) break; getGroup(g[0], g[1]); } };
   sched = []; schedCursor = 0; lastEnd = 0; let gapPrev = 0;
   startTicker(my);
   for (let k = 0; ; k++) {
     const g = planAt(k); if (!g) break;
-    while (my === runId && lastEnd - ctx.currentTime > 25) await sleep(150);       // do not run far ahead of playback
+    while (my === runId && lastEnd - ctx.currentTime > aheadTarget()) await sleep(150); // rest while enough audio is queued
     if (my !== runId) return;
     prefetch(k);
     const p = getGroup(g[0], g[1]);
@@ -1133,6 +1135,33 @@ async function playDevice(my) {
   }
 }
 
+/* Safety brake: if the page's frames keep stalling while the voice works, back off automatically. */
+let lagRaf = 0;
+function lagWatch(my) {
+  cancelAnimationFrame(lagRaf);
+  let last = performance.now(), win = last, bad = 0;
+  const loop = now => {
+    if (my !== runId || !playing) return;
+    const d = now - last; last = now;
+    if (!document.hidden && d > 120 && d < 1500) bad++;
+    if (now - win > 3000) { const hit = bad >= 6; bad = 0; win = now; if (hit && !paused) { relieve(); return; } }
+    lagRaf = requestAnimationFrame(loop);
+  };
+  lagRaf = requestAnimationFrame(loop);
+}
+function relieve() {
+  if (K.lagFixes >= 3) return; K.lagFixes++;
+  if (useHD()) {
+    S.gpu = false; saveS(); kReset(); invalidateAudio(); updateEngineUI();
+    toast('Your computer was lagging, so the graphics chip is now off. Playback restarts in standard mode.', false, 6000);
+    play(idx);
+  } else if (Math.min(K.cap, K.workers.length) > 1) {
+    K.cap = 1; toast('Your computer was lagging, so the voice now uses less power.', false, 5000); lagWatch(runId);
+  } else if (!K.lagTold) {
+    K.lagTold = true; toast('Your computer is struggling. The device voice in settings is much lighter.', false, 7000); lagWatch(runId);
+  } else lagWatch(runId);
+}
+
 async function ensureEngine() {
   if (S.engine !== 'natural' || K.ready) return;
   if (!K.readyP && !modelInstalled()) toast(`Downloading the natural voice (about ${modelMB()} MB, one time)…`, false, 6000);
@@ -1149,6 +1178,7 @@ async function play(from = idx) {
   if (exporting) { toast('Wait for the audio file to finish, or cancel it first.'); return; }
   const my = ++runId; stopAudioNow(); wakeWaiters();
   idx = clamp(from, 0, units.length - 1); playing = true; paused = false; paint(); mark(idx);
+  if (S.engine === 'natural') lagWatch(my);
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
   else if (S.engine === 'natural') ac();
   await ensureEngine(); if (my !== runId) return;
@@ -1388,6 +1418,7 @@ $('#voiceD').onchange = e => { S.voiceD = e.target.value; saveS(); if (playing) 
 $('#allVoices').onchange = e => { S.allVoices = e.target.checked; saveS(); fillVoicesD(); };
 $('#hdChk').onchange = e => {
   S.gpu = e.target.checked; saveS(); kReset(); invalidateAudio(); updateEngineUI();
+  if (S.gpu) toast('Graphics chip on. If playback makes your screen lag, turn it off.', false, 5000);
   if (S.engine === 'natural') kInit().catch(() => {});
 };
 $('#speed').oninput = e => { const v = +e.target.value; $('#speedOut').textContent = v.toFixed(2).replace(/0$/, '') + '×'; rangeFill(); };
