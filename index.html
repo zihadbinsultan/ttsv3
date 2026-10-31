@@ -151,8 +151,8 @@ dialog::backdrop{background:rgba(0,0,0,.55);backdrop-filter:blur(3px)}
 .grp:last-child{border-bottom:0}
 .grp>h3{font-size:.95rem;color:var(--ink);margin-bottom:10px}
 .hint{color:var(--mute);font-size:.86rem;margin-top:8px}
-.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:3px;margin-bottom:12px}
-.seg button{padding:9px 10px;border-radius:9px;color:var(--mute);font-weight:600}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:3px;margin-bottom:12px}
+.seg button{padding:9px 4px;font-size:.86rem;line-height:1.2;border-radius:9px;color:var(--mute);font-weight:600}
 .seg button[aria-checked=true]{background:var(--accent);color:var(--accent-ink)}
 select,.field{width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--ink)}
 .line{display:flex;align-items:center;gap:12px;margin-bottom:10px}
@@ -204,7 +204,7 @@ body.nodock .toast{bottom:24px}
 
     <div class="card nat" id="natCard" hidden>
       <h2>Get a natural voice</h2>
-      <p>The built-in voices on your device are limited. This one is a neural voice that runs entirely on your device. It is a one-time download of about <span class="mb">90</span> MB.</p>
+      <p id="natDesc">The built-in voices on your device are limited. This one is a neural voice that runs entirely on your device. It is a one-time download of about <span class="mb">90</span> MB.</p>
       <div class="bar" id="natBar" hidden><i></i></div>
       <div class="row" style="margin:0"><button class="btn pri" id="natGo">Download natural voice</button><span class="stat" id="natMsg"></span></div>
     </div>
@@ -262,11 +262,24 @@ body.nodock .toast{bottom:24px}
     <div class="grp">
       <h3>Voice engine</h3>
       <div class="seg" role="radiogroup" aria-label="Voice engine">
-        <button role="radio" id="tabNat" aria-checked="true">Natural</button>
+        <button role="radio" id="tabPip" aria-checked="true">Fast natural</button>
+        <button role="radio" id="tabNat" aria-checked="false">Best quality</button>
         <button role="radio" id="tabDev" aria-checked="false">This device</button>
       </div>
 
-      <div id="panNat">
+      <div id="panPip">
+        <p class="hint" style="margin-top:0">Natural voices that start almost at once and stay light on your computer. Each voice downloads one time, then plays like a built-in voice.</p>
+        <label class="hint" for="voiceP" style="margin:12px 0 6px;display:block">Voice</label>
+        <select id="voiceP"></select>
+        <div class="bar" id="natBar3" style="margin-top:10px" hidden><i></i></div>
+        <div class="vgrid"><button class="btn pri" id="natGo3">Download voice</button><button class="btn sm" id="previewP">Hear a sample</button></div>
+        <p class="hint" id="natMsg3"></p>
+        <details class="hint" style="margin-top:6px"><summary style="cursor:pointer">Want an even more lifelike voice? Install a free Premium voice</summary>
+          <p><b>Mac:</b> System Settings, Accessibility, Spoken Content, System Voice, Manage Voices. Download any marked Premium or Enhanced (Ava, Zoe, Evan and Tom are good).<br><b>iPhone and iPad:</b> Settings, Accessibility, Spoken Content, Voices, then pick an Enhanced or Premium voice.<br><b>Android:</b> Settings, System, Languages, Text-to-speech output, then install a high quality voice.<br><b>Windows:</b> Settings, Time and language, Speech, Add voices (Natural voices in Edge are the best).<br>Reload this page, then choose it under “This device”.</p>
+        </details>
+      </div>
+
+      <div id="panNat" hidden>
         <div id="natReady" hidden>
           <label class="hint" for="voiceK" style="margin:0 0 6px;display:block">Voice (letter shows quality grade)</label>
           <select id="voiceK"></select>
@@ -400,6 +413,104 @@ self.onmessage = async (e) => {
 };
 </script>
 
+<!-- Fast natural voice worker (Piper). Small neural voice, runs off the main thread. -->
+<script type="text/plain" id="pworker">
+importScripts('__ORT__/ort.wasm.min.js');
+const post = (m, t) => self.postMessage(m, t || []);
+let sess = null, cfg = null, ph = null, phOut = [], sr = 22050;
+const GAIN = 1.25;
+
+async function fetchCached(url, label, expect) {
+  const c = await caches.open('piper-voices');
+  let r = await c.match(url);
+  post({ t: 'progress', status: 'initiate', file: label });
+  if (r) { const b = await r.blob(); post({ t: 'progress', status: 'done', file: label, loaded: b.size, total: b.size }); return b; }
+  const net = await fetch(url);
+  if (!net.ok) throw new Error('Download failed (' + net.status + '). Check your connection and try again.');
+  const total = +net.headers.get('content-length') || expect || 0;
+  const rd = net.body.getReader(), parts = []; let l = 0, last = 0;
+  for (;;) {
+    const { done, value } = await rd.read(); if (done) break;
+    parts.push(value); l += value.length;
+    const now = performance.now(); if (now - last > 120) { last = now; post({ t: 'progress', status: 'progress', file: label, loaded: l, total: Math.max(total, l) }); }
+  }
+  const blob = new Blob(parts);
+  try { await c.put(url, new Response(blob)); } catch (_) {}
+  post({ t: 'progress', status: 'done', file: label, loaded: blob.size, total: blob.size });
+  return blob;
+}
+
+function sentencesOf(text) {
+  phOut.length = 0;
+  ph.callMain(['-l', cfg.espeak.voice, '--input', JSON.stringify([{ text }]), '--espeak_data', '/espeak-ng-data']);
+  const out = [];
+  for (const l of phOut) {
+    if (l[0] !== '{') continue;
+    let ids; try { ids = JSON.parse(l).phoneme_ids; } catch (_) { continue; }
+    let cur = []; for (const id of ids) { cur.push(id); if (id === 2) { out.push(cur); cur = []; } }
+    if (cur.length > 2) out.push(cur);
+  }
+  return out;
+}
+async function speak(ids, speed) {
+  const f = {
+    input: new ort.Tensor('int64', BigInt64Array.from(ids, BigInt), [1, ids.length]),
+    input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)])),
+    scales: new ort.Tensor('float32', Float32Array.from([cfg.inference.noise_scale, cfg.inference.length_scale / speed, cfg.inference.noise_w]))
+  };
+  if ((cfg.num_speakers || 1) > 1) f.sid = new ort.Tensor('int64', BigInt64Array.from([0n]));
+  const r = await sess.run(f);
+  return r.output.data;
+}
+function trim(f) {
+  const th = 0.01; let a = 0, b = f.length - 1;
+  while (a < b && Math.abs(f[a]) < th) a++;
+  while (b > a && Math.abs(f[b]) < th) b--;
+  a = Math.max(0, a - Math.round(sr * 0.015)); b = Math.min(f.length - 1, b + Math.round(sr * 0.04));
+  const o = new Float32Array(b - a + 1); for (let i = 0; i < o.length; i++) o[i] = f[a + i] * GAIN;
+  const fi = Math.round(sr * 0.004), fo = Math.round(sr * 0.02);
+  for (let i = 0; i < fi && i < o.length; i++) o[i] *= i / fi;
+  for (let i = 0; i < fo && i < o.length; i++) o[o.length - 1 - i] *= i / fo;
+  return o;
+}
+
+self.onmessage = async (e) => {
+  const m = e.data;
+  if (m.t === 'init') {
+    try {
+      const wasmBlob = await fetchCached(m.ortWasm, 'engine', 10700000);
+      const dataBlob = await fetchCached(m.phData, 'language data', 18077249);
+      const phWasm = await fetchCached(m.phWasm, 'phonemizer', 635212);
+      importScripts(m.phJs);
+      const cfgBlob = await fetchCached(m.voiceJson, 'voice settings', 5000);
+      cfg = JSON.parse(await cfgBlob.text()); sr = (cfg.audio && cfg.audio.sample_rate) || 22050;
+      const modelBlob = await fetchCached(m.voiceUrl, 'voice', m.voiceBytes);
+      const W = b => new Blob([b], { type: 'application/wasm' });
+      const du = URL.createObjectURL(dataBlob), wu = URL.createObjectURL(W(phWasm)), ou = URL.createObjectURL(W(wasmBlob));
+      ph = await createPiperPhonemize({ print: l => phOut.push(l), printErr: () => {}, locateFile: f => f.endsWith('.data') ? du : f.endsWith('.wasm') ? wu : f });
+      ort.env.wasm.numThreads = 1; ort.env.wasm.simd = true;
+      ort.env.wasm.wasmPaths = { 'ort-wasm-simd.wasm': ou, 'ort-wasm-simd-threaded.wasm': ou, 'ort-wasm.wasm': ou, 'ort-wasm-threaded.wasm': ou };
+      sess = await ort.InferenceSession.create(new Uint8Array(await modelBlob.arrayBuffer()), { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
+      try { const s0 = sentencesOf('Ready.'); if (s0[0]) await speak(s0[0], 1); } catch (_) {}   // warm-up
+      post({ t: 'ready' });
+    } catch (err) {
+      post({ t: 'initError', msg: String((err && err.message) || err) });
+    }
+  } else if (m.t === 'gen') {
+    try {
+      const t0 = performance.now(); const arrs = [];
+      for (const ids of sentencesOf(m.text)) { if (ids.length < 5) continue; arrs.push(trim(await speak(ids, m.speed))); }
+      if (!arrs.length) arrs.push(new Float32Array(Math.round(sr * 0.05)));
+      const gap = Math.round(sr * Math.min(0.2, 0.17 / Math.max(m.speed, 0.8))); let n = 0; arrs.forEach((a, k) => n += a.length + (k ? gap : 0));
+      const f = new Float32Array(n); let o = 0; arrs.forEach((a, k) => { if (k) o += gap; f.set(a, o); o += a.length; });
+      post({ t: 'audio', id: m.id, buf: f.buffer, sr, ms: performance.now() - t0 }, [f.buffer]);
+    } catch (err) {
+      post({ t: 'genError', id: m.id, msg: String((err && err.message) || err) });
+    }
+  }
+};
+</script>
+
 <script>
 'use strict';
 /* =========================================================
@@ -409,6 +520,13 @@ self.onmessage = async (e) => {
    ========================================================= */
 
 const KOKORO_URL = 'https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js';
+const PIPER = {
+  ort: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist',
+  phJs: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.js',
+  phWasm: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.wasm',
+  phData: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.data',
+  voices: 'https://huggingface.co/rhasspy/piper-voices/resolve/main'
+};
 const LIB = {
   pdf: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
   pdfWorker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
@@ -436,10 +554,11 @@ function hash(str) {
 }
 
 /* ---------- settings ---------- */
-const DEFAULTS = { engine: 'device', voiceK: 'af_heart', voiceD: '', speed: 1, volume: 1, size: 1, theme: '', gpu: null,
+const DEFAULTS = { engine: 'piper', voiceK: 'af_heart', voiceP: 'en_US-lessac-medium', voiceD: '', speed: 1, volume: 1, size: 1, theme: '', gpu: null,
   autoScroll: true, readCode: false, wake: false, allVoices: false, dict: '' };
 const S = Object.assign({}, DEFAULTS, ls.get('tts:settings', {}));
 const saveS = () => ls.set('tts:settings', S);
+if (!ls.get('tts:v5', false)) { S.engine = 'piper'; saveS(); ls.set('tts:v5', true); }   // one-time move to the fast natural voice
 
 /* ---------- toast / busy ---------- */
 let toastT;
@@ -859,22 +978,38 @@ const VNAME = {}; VOICES.forEach(g => g[1].forEach(v => VNAME[v[0]] = v[1]));
 
 const canGPU = () => !!navigator.gpu;
 const useHD = () => canGPU() && S.gpu === true;            // graphics chip is opt-in: it is fast but can make a laptop lag
-const modelKey = () => 'tts:model:' + (useHD() ? 'hd' : 'lite');
-const modelInstalled = () => !!ls.get(modelKey(), false);
-const modelMB = () => useHD() ? 330 : 90;
+const PV = [
+  ['US voices', [['en_US-lessac-medium', 'Lessac, warm woman', 'en/en_US/lessac/medium'], ['en_US-amy-medium', 'Amy, clear woman', 'en/en_US/amy/medium'], ['en_US-hfc_female-medium', 'Female, calm', 'en/en_US/hfc_female/medium'], ['en_US-kristin-medium', 'Kristin, friendly woman', 'en/en_US/kristin/medium'], ['en_US-ryan-medium', 'Ryan, man', 'en/en_US/ryan/medium'], ['en_US-hfc_male-medium', 'Male, steady', 'en/en_US/hfc_male/medium'], ['en_US-joe-medium', 'Joe, man', 'en/en_US/joe/medium']]],
+  ['UK voices', [['en_GB-jenny_dioco-medium', 'Jenny, woman', 'en/en_GB/jenny_dioco/medium'], ['en_GB-alba-medium', 'Alba, Scottish woman', 'en/en_GB/alba/medium'], ['en_GB-alan-medium', 'Alan, man', 'en/en_GB/alan/medium'], ['en_GB-northern_english_male-medium', 'Northern English man', 'en/en_GB/northern_english_male/medium']]]
+];
+const PVN = {}, PVP = {}; PV.forEach(g => g[1].forEach(v => { PVN[v[0]] = v[1]; PVP[v[0]] = v[2]; }));
+const PVOICE_MB = 63, PBASE_MB = 29;
+const kindOf = () => S.engine === 'natural' ? 'natural' : 'piper';
+const isNeural = () => S.engine === 'natural' || S.engine === 'piper';
+const curVoice = () => kindOf() === 'piper' ? (PVN[S.voiceP] ? S.voiceP : 'en_US-lessac-medium') : S.voiceK;
+const keyFor = k => k === 'piper' ? 'piper:' + curVoiceP() : 'natural:' + (useHD() ? 'hd' : 'lite');
+const curVoiceP = () => PVN[S.voiceP] ? S.voiceP : 'en_US-lessac-medium';
+const flagFor = k => k === 'piper' ? 'tts:model:piper:' + curVoiceP() : 'tts:model:' + (useHD() ? 'hd' : 'lite');
+const installedFor = k => !!ls.get(flagFor(k), false);
+const modelKey = () => flagFor(kindOf());
+const modelInstalled = () => installedFor(kindOf());
+const mbFor = k => k === 'piper' ? PVOICE_MB + (ls.get('tts:model:piperbase', false) ? 0 : PBASE_MB) : (useHD() ? 330 : 90);
+const modelMB = () => mbFor(kindOf());
 const poolSize = () => {
-  if (useHD()) return 1;
+  if (useHD() && kindOf() === 'natural') return 1;
   const hc = navigator.hardwareConcurrency || 4, mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if (kindOf() === 'piper') return mobile ? 1 : hc >= 8 ? 2 : 1;   // Piper is light: one worker is already faster than real time
   return mobile ? 1 : clamp(Math.floor(hc / 4), 1, 2);    // gentle on the machine: at most 2 workers on a computer, 1 on a phone
 };
 
-const K = { workers: [], ready: false, readyP: null, queue: [], next: 1, files: {}, pct: 0, rtf: [], warned: false, cap: 99, jobs: 0, lagFixes: 0, lagTold: false };
+const K = { engKey: '', workers: [], ready: false, readyP: null, queue: [], next: 1, files: {}, pct: 0, rtf: [], warned: false, cap: 99, jobs: 0, lagFixes: 0, lagTold: false };
 
-function startWorker(primary) {
+function startWorker(primary, kind) {
   return new Promise((res, rej) => {
-    const src = $('#kworker').textContent.replace('__KOKORO_URL__', KOKORO_URL);
+    const piper = kind === 'piper';
+    const src = piper ? $('#pworker').textContent.replace('__ORT__', PIPER.ort) : $('#kworker').textContent.replace('__KOKORO_URL__', KOKORO_URL);
     const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
-    let w; try { w = new Worker(url, { type: 'module' }); } catch (e) { return rej(new Error('This browser cannot run the natural voice.')); }
+    let w; try { w = piper ? new Worker(url) : new Worker(url, { type: 'module' }); } catch (e) { return rej(new Error('This browser cannot run the natural voice.')); }
     const rec = { w, ready: false, busy: false, job: null }; K.workers.push(rec);
     w.onmessage = e => {
       const m = e.data;
@@ -894,7 +1029,10 @@ function startWorker(primary) {
       } else if (m.t === 'genError') { const j = rec.job; rec.job = null; rec.busy = false; if (j) j.rej(new Error(m.msg)); dispatch(); }
     };
     w.onerror = () => rej(new Error('The natural voice failed to start. Check your connection and try again.'));
-    w.postMessage({ t: 'init', dtype: useHD() ? 'fp32' : 'q8', device: useHD() ? 'webgpu' : 'wasm' });
+    if (piper) {
+      const vp = curVoiceP(), base = PIPER.voices + '/' + PVP[vp] + '/' + vp + '.onnx';
+      w.postMessage({ t: 'init', ortWasm: PIPER.ort + '/ort-wasm-simd.wasm', phJs: PIPER.phJs, phWasm: PIPER.phWasm, phData: PIPER.phData, voiceUrl: base, voiceJson: base + '.json', voiceBytes: 63200000 });
+    } else w.postMessage({ t: 'init', dtype: useHD() ? 'fp32' : 'q8', device: useHD() ? 'webgpu' : 'wasm' });
   });
 }
 // Hand queued jobs (lowest priority number first, i.e. earliest in the document) to idle workers.
@@ -909,21 +1047,23 @@ function dispatch() {
 function kGen(text, voice, speed, prio = 0) { return new Promise((res, rej) => { K.queue.push({ id: K.next++, text, voice, speed, prio, res, rej }); dispatch(); }); }
 function kClear() { const q = K.queue; K.queue = []; q.forEach(j => j.rej(new Cancel())); }
 function killWorkers() { K.workers.forEach(r => { r.w.terminate(); if (r.job) r.job.rej(new Cancel()); }); K.workers = []; kClear(); }
-function kReset() { killWorkers(); Object.assign(K, { ready: false, readyP: null, files: {}, pct: 0 }); }
-function kInit() {
+function kReset() { killWorkers(); Object.assign(K, { ready: false, readyP: null, files: {}, pct: 0, engKey: '', rtf: [] }); }
+function kInit(kind = kindOf()) {
+  if (K.readyP && K.engKey !== keyFor(kind)) kReset();
   if (K.readyP) return K.readyP;
+  K.engKey = keyFor(kind); K.kind = kind;
   const p = (async () => {
     K.files = {}; K.pct = 0;
-    try { await startWorker(true); }
+    try { await startWorker(true, kind); }
     catch (e) {
-      if (!useHD()) throw e;
+      if (kind !== 'natural' || !useHD()) throw e;
       killWorkers(); S.gpu = false; saveS(); K.files = {}; K.pct = 0;      // graphics chip failed: fall back to CPU mode
       toast('The graphics chip could not run the voice, so standard mode is being used.', true, 5000);
-      await startWorker(true);
+      await startWorker(true, kind);
     }
-    K.ready = true; ls.set(modelKey(), true); paintDownload();
+    K.ready = true; ls.set(flagFor(kind), true); if (kind === 'piper') ls.set('tts:model:piperbase', true); paintDownload();
     try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
-    for (let k = 1; k < poolSize(); k++) startWorker(false).catch(() => {});  // extra workers load from the browser cache
+    for (let k = 1; k < poolSize(); k++) startWorker(false, kind).catch(() => {});  // extra workers load from the browser cache
   })();
   K.readyP = p;
   p.catch(e => { killWorkers(); K.readyP = null; K.ready = false; paintDownload(e.message); });
@@ -932,17 +1072,18 @@ function kInit() {
 
 function paintDownload(err) {
   const busyDl = !!K.readyP && !K.ready;
-  for (const [bar, msg, btn] of [['#natBar', '#natMsg', '#natGo'], ['#natBar2', '#natMsg2', '#natGo2']]) {
-    $(bar).hidden = !busyDl; $(bar + ' i').style.width = K.pct + '%';
+  for (const [bar, msg, btn, kd] of [['#natBar', '#natMsg', '#natGo', null], ['#natBar2', '#natMsg2', '#natGo2', 'natural'], ['#natBar3', '#natMsg3', '#natGo3', 'piper']]) {
+    const mine = busyDl && (!kd || K.kind === kd);
+    $(bar).hidden = !mine; $(bar + ' i').style.width = K.pct + '%';
     $(btn).disabled = busyDl;
-    $(msg).textContent = err ? err : busyDl ? (K.pct ? `Downloading ${K.pct}%` : 'Starting…') : '';
+    $(msg).textContent = err ? err : mine ? (K.pct ? `Downloading ${K.pct}%` : 'Starting…') : '';
     $(msg).style.color = err ? 'var(--danger)' : '';
   }
   if (busyDl) setStatus(K.pct ? `Loading voice ${K.pct}%` : 'Loading voice…'); else if (!playing) setStatus('');
   updateEngineUI();
 }
-async function downloadNatural() {
-  try { await kInit(); S.engine = 'natural'; saveS(); updateEngineUI(); toast('Natural voice ready.'); }
+async function downloadNatural(kind = kindOf()) {
+  try { await kInit(kind); S.engine = kind; saveS(); updateEngineUI(); toast('Natural voice ready.'); }
   catch (e) { toast(e.message, true, 5000); }
 }
 
@@ -1015,10 +1156,10 @@ function groupAt(i, limit = GROUP) {
 }
 function groupText(i, e) { const t = []; for (let k = i; k < e; k++) { const s = speechText(units[k]); if (s) t.push(s); } return t.join(' '); }
 function getGroup(i, e) {
-  const key = `${S.voiceK}|${S.speed}|${i}|${e}`; let p = cache.get(key);
+  const key = `${keyFor(kindOf())}|${S.speed}|${i}|${e}`; let p = cache.get(key);
   if (!p) {
     const text = groupText(i, e);
-    p = text ? kGen(text, S.voiceK, S.speed, i) : Promise.resolve(null);
+    p = text ? kGen(text, curVoice(), S.speed, i) : Promise.resolve(null);
     p.done = false; p.key = key; p.then(() => { p.done = true; }, () => {});
     cache.set(key, p); p.catch(() => { if (cache.get(key) === p) cache.delete(key); });
   }
@@ -1033,7 +1174,7 @@ function avgSpeed() {   // how many times faster than real time we are generatin
 }
 // Fast devices only keep about 12 seconds queued and idle in between. Slow ones keep a longer queue.
 function aheadTarget() { const a = avgSpeed(); return a && a < 2 ? 40 : 12; }
-function cushion() { const a = avgSpeed(); if (!a) return useHD() ? 1 : 2; return a < 1.2 ? 3 : a < 2.5 ? 2 : 1; }
+function cushion() { const a = avgSpeed(); if (!a) return 2; return a < 1.2 ? 3 : a < 2.5 ? 2 : 1; }
 
 function startTicker(my) {
   clearInterval(tickT);
@@ -1048,7 +1189,7 @@ function startTicker(my) {
 }
 
 async function playNatural(my) {
-  const ctx = ac(); if (ctx.state === 'suspended') await ctx.resume();
+  const ctx = ac(); if (ctx.state === 'suspended' && !paused) await ctx.resume();
   const start = idx, plan = [];
   const planAt = k => {
     while (plan.length <= k) {
@@ -1151,7 +1292,7 @@ function lagWatch(my) {
 }
 function relieve() {
   if (K.lagFixes >= 3) return; K.lagFixes++;
-  if (useHD()) {
+  if (S.engine === 'natural' && useHD()) {
     S.gpu = false; saveS(); kReset(); invalidateAudio(); updateEngineUI();
     toast('Your computer was lagging, so the graphics chip is now off. Playback restarts in standard mode.', false, 6000);
     play(idx);
@@ -1163,8 +1304,8 @@ function relieve() {
 }
 
 async function ensureEngine() {
-  if (S.engine !== 'natural' || K.ready) return;
-  if (!K.readyP && !modelInstalled()) toast(`Downloading the natural voice (about ${modelMB()} MB, one time)…`, false, 6000);
+  if (!isNeural() || (K.ready && K.engKey === keyFor(kindOf()))) return;
+  if (!(K.readyP && K.engKey === keyFor(kindOf())) && !modelInstalled()) toast(`Downloading the natural voice (about ${modelMB()} MB, one time). Reading starts when it finishes.`, false, 7000);
   setStatus('Loading voice…');
   try { await kInit(); } catch (e) {
     S.engine = 'device'; saveS(); updateEngineUI();
@@ -1178,12 +1319,13 @@ async function play(from = idx) {
   if (exporting) { toast('Wait for the audio file to finish, or cancel it first.'); return; }
   const my = ++runId; stopAudioNow(); wakeWaiters();
   idx = clamp(from, 0, units.length - 1); playing = true; paused = false; paint(); mark(idx);
-  if (S.engine === 'natural') lagWatch(my);
+  if (isNeural()) lagWatch(my);
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-  else if (S.engine === 'natural') ac();
+  else if (isNeural()) ac();
   await ensureEngine(); if (my !== runId) return;
+  if (paused && audioCtx && isNeural()) audioCtx.suspend();   // paused while the voice was still loading
   try {
-    if (S.engine === 'natural') await playNatural(my); else await playDevice(my);
+    if (isNeural()) await playNatural(my); else await playDevice(my);
     if (my === runId) { playing = false; paused = false; idx = 0; ls.del('pos:' + doc.id); mark(0, true); paint(); stopAudioNow(); toast('Finished reading.'); }
   } catch (e) {
     if (e.name === 'Cancel' || my !== runId) return;
@@ -1193,14 +1335,14 @@ async function play(from = idx) {
 function pause() {
   if (!playing || paused) return;
   paused = true;
-  if (S.engine === 'natural') { if (audioCtx) audioCtx.suspend(); }
+  if (isNeural()) { if (audioCtx) audioCtx.suspend(); }
   else if ('speechSynthesis' in window) speechSynthesis.cancel();
   savePos(); paint();
 }
 function resume() {
   if (!paused) return;
   paused = false;
-  if (S.engine === 'natural' && audioCtx) audioCtx.resume();
+  if (isNeural() && audioCtx) audioCtx.resume();
   wakeWaiters(); paint();
 }
 function stopAll() { runId++; stopAudioNow(); wakeWaiters(); playing = false; paused = false; setBuffering(false); paint(); }
@@ -1247,7 +1389,7 @@ function paintPos() {
   const left = (wordsBefore[n] - wordsBefore[idx]) / (160 * S.speed);
   $('#leftTxt').textContent = left < 1 ? 'Under a minute left' : left < 90 ? `${Math.round(left)} min left` : `${(left / 60).toFixed(1)} hr left`;
   $('#speedChip').textContent = S.speed.toFixed(2).replace(/0$/, '') + '×';
-  $('#voiceChip').textContent = S.engine === 'natural' ? (VNAME[S.voiceK] || 'Voice') : ((currentDeviceVoice() || {}).name || 'Voice').replace(/\s*\(.*\)/, '').replace(/^(Microsoft|Google)\s+/, '');
+  $('#voiceChip').textContent = S.engine === 'piper' ? ((PVN[S.voiceP] || 'Voice').split(',')[0]) : S.engine === 'natural' ? (VNAME[S.voiceK] || 'Voice') : ((currentDeviceVoice() || {}).name || 'Voice').replace(/\s*\(.*\)/, '').replace(/^(Microsoft|Google)\s+/, '');
 }
 let lvlRaf = 0;
 function levelLoop() {
@@ -1257,7 +1399,7 @@ function levelLoop() {
   const tick = () => {
     if (!(playing && !paused)) return;
     let lvl = 0.25 + 0.1 * Math.sin(performance.now() / 380);
-    if (S.engine === 'natural' && analyser && srcs.length) { analyser.getByteTimeDomainData(buf); let s = 0; for (const v of buf) { const x = (v - 128) / 128; s += x * x; } lvl = clamp(Math.sqrt(s / buf.length) * 4, 0, 1); }
+    if (isNeural() && analyser && srcs.length) { analyser.getByteTimeDomainData(buf); let s = 0; for (const v of buf) { const x = (v - 128) / 128; s += x * x; } lvl = clamp(Math.sqrt(s / buf.length) * 4, 0, 1); }
     btn.style.setProperty('--lvl', lvl.toFixed(3)); lvlRaf = requestAnimationFrame(tick);
   };
   tick();
@@ -1369,28 +1511,37 @@ function fillVoicesK() {
   VOICES.forEach(([g, list]) => { const og = document.createElement('optgroup'); og.label = g; list.forEach(([id, name, grade]) => { const o = document.createElement('option'); o.value = id; o.textContent = `${name} (${grade})` + (id === 'af_heart' ? ', recommended' : ''); og.appendChild(o); }); sel.appendChild(og); });
   sel.value = S.voiceK;
 }
+function fillVoicesP() {
+  const sel = $('#voiceP'); sel.innerHTML = '';
+  PV.forEach(([g, list]) => { const og = document.createElement('optgroup'); og.label = g; list.forEach(([id, name]) => { const o = document.createElement('option'); o.value = id; o.textContent = name + (ls.get('tts:model:piper:' + id, false) ? ', downloaded' : '') + (id === 'en_US-lessac-medium' ? ', recommended' : ''); og.appendChild(o); }); sel.appendChild(og); });
+  sel.value = curVoiceP();
+}
 function fillVoicesD() {
   const sel = $('#voiceD'); sel.innerHTML = ''; const vs = deviceVoices();
   vs.forEach(v => { const o = document.createElement('option'); o.value = v.voiceURI; o.textContent = `${v.name} (${v.lang})` + (NICE.test(v.name) ? ', higher quality' : ''); sel.appendChild(o); });
   const cur = currentDeviceVoice(); if (cur) sel.value = cur.voiceURI;
   if (!vs.length) sel.innerHTML = '<option>No voices found on this device</option>';
 }
-let tabShown = 'natural';
+let tabShown = 'piper';
 function showTab(t) { tabShown = t; updateEngineUI(); }
 function updateEngineUI() {
-  const natOk = K.ready || modelInstalled();
-  const dl = !!K.readyP && !K.ready;
-  $('#tabNat').setAttribute('aria-checked', tabShown === 'natural'); $('#tabDev').setAttribute('aria-checked', tabShown === 'device');
-  $('#panNat').hidden = tabShown !== 'natural'; $('#panDev').hidden = tabShown !== 'device';
+  const natOk = installedFor('natural'), pipOk = installedFor('piper'), nk = kindOf(), here = installedFor(nk);
+  $('#tabPip').setAttribute('aria-checked', tabShown === 'piper'); $('#tabNat').setAttribute('aria-checked', tabShown === 'natural'); $('#tabDev').setAttribute('aria-checked', tabShown === 'device');
+  $('#panPip').hidden = tabShown !== 'piper'; $('#panNat').hidden = tabShown !== 'natural'; $('#panDev').hidden = tabShown !== 'device';
   $('#natReady').hidden = !natOk; $('#natGet').hidden = natOk;
-  $('#variantBox').hidden = !canGPU(); $('#hdChk').checked = useHD(); document.querySelectorAll('.mb').forEach(e => { e.textContent = modelMB(); });
-  $('#natCard').hidden = natOk || !!doc;
-  $('#tabNat').textContent = S.engine === 'natural' ? 'Natural (in use)' : 'Natural';
-  $('#tabDev').textContent = S.engine === 'device' ? 'This device (in use)' : 'This device';
+  $('#variantBox').hidden = !canGPU(); $('#hdChk').checked = useHD();
+  $('#natGo3').hidden = pipOk; $('#previewP').hidden = !pipOk; $('#natGo3').textContent = `Download voice (${mbFor('piper')} MB)`;
+  $('#natGo2').textContent = `Download natural voice (${mbFor('natural')} MB)`;
+  document.querySelectorAll('.mb').forEach(e => { e.textContent = modelMB(); });
+  $('#natDesc').innerHTML = nk === 'piper' ? `Free, natural-sounding voice that runs on your device. Tap play and it downloads once (about <span class="mb">${modelMB()}</span> MB), then reads with no waiting.` : `A neural voice that runs entirely on your device. One-time download of about <span class="mb">${modelMB()}</span> MB.`;
+  $('#natCard').hidden = here || !!doc;
+  $('#tabPip').textContent = S.engine === 'piper' ? 'Fast natural ✓' : 'Fast natural';
+  $('#tabNat').textContent = S.engine === 'natural' ? 'Best quality ✓' : 'Best quality';
+  $('#tabDev').textContent = S.engine === 'device' ? 'This device ✓' : 'This device';
   paintPos();
 }
 function openSettings(tab) {
-  fillVoicesK(); fillVoicesD();
+  fillVoicesK(); fillVoicesP(); fillVoicesD();
   $('#speed').value = S.speed; $('#speedOut').textContent = S.speed.toFixed(2).replace(/0$/, '') + '×';
   $('#vol').value = S.volume; $('#volOut').textContent = Math.round(S.volume * 100) + '%';
   $('#size').value = S.size; $('#sizeOut').textContent = Math.round(S.size * 100) + '%';
@@ -1401,25 +1552,30 @@ function openSettings(tab) {
 }
 function rangeFill() { document.querySelectorAll('input[type=range]').forEach(r => { if (r.id === 'seek') return; r.style.setProperty('--p', ((r.value - r.min) / (r.max - r.min) * 100) + '%'); }); }
 function selectEngine(e) {
-  if (e === 'natural' && !(K.ready || modelInstalled())) { showTab('natural'); return; }
+  if (e === 'natural' && !installedFor('natural')) { showTab('natural'); return; }
   showTab(e); if (S.engine === e) return;
   S.engine = e; saveS(); if (playing) { invalidateAudio(); play(idx); } updateEngineUI();
-  if (e === 'natural' && !K.readyP) kInit().catch(() => {});
+  if (isNeural() && installedFor(e) && !K.readyP) kInit().catch(() => {});
 }
+$('#tabPip').onclick = () => selectEngine('piper');
 $('#tabNat').onclick = () => selectEngine('natural');
 $('#tabDev').onclick = () => selectEngine('device');
 $('#settingsBtn').onclick = () => openSettings();
 $('#voiceChip').onclick = () => openSettings();
-$('#natGo').onclick = $('#natGo2').onclick = downloadNatural;
+$('#natGo').onclick = () => downloadNatural(); $('#natGo2').onclick = () => downloadNatural('natural'); $('#natGo3').onclick = () => downloadNatural('piper');
 document.querySelectorAll('dialog').forEach(d => { d.addEventListener('click', e => { if (e.target === d && d.id !== 'expDlg') d.close(); }); d.querySelectorAll('[data-close]').forEach(b => b.onclick = () => d.close()); });
 
+$('#voiceP').onchange = e => {
+  S.voiceP = e.target.value; saveS(); kReset(); invalidateAudio(); updateEngineUI(); fillVoicesP();
+  if (S.engine === 'piper') { if (playing) play(idx); else if (installedFor('piper')) kInit().catch(() => {}); }
+};
 $('#voiceK').onchange = e => { S.voiceK = e.target.value; saveS(); invalidateAudio(); if (playing) play(idx); paintPos(); };
 $('#voiceD').onchange = e => { S.voiceD = e.target.value; saveS(); if (playing) { stopAudioNow(); play(idx); } paintPos(); };
 $('#allVoices').onchange = e => { S.allVoices = e.target.checked; saveS(); fillVoicesD(); };
 $('#hdChk').onchange = e => {
   S.gpu = e.target.checked; saveS(); kReset(); invalidateAudio(); updateEngineUI();
   if (S.gpu) toast('Graphics chip on. If playback makes your screen lag, turn it off.', false, 5000);
-  if (S.engine === 'natural') kInit().catch(() => {});
+  if (S.engine === 'natural') kInit('natural').catch(() => {});
 };
 $('#speed').oninput = e => { const v = +e.target.value; $('#speedOut').textContent = v.toFixed(2).replace(/0$/, '') + '×'; rangeFill(); };
 $('#speed').onchange = e => setSpeed(+e.target.value);
@@ -1437,8 +1593,9 @@ $('#speedChip').onclick = () => { const steps = [.8, 1, 1.2, 1.5, 1.8, 2]; const
 $('#clearRecent').onclick = async () => { await DB.clear(); Object.keys(localStorage).filter(k => k.startsWith('pos:')).forEach(k => localStorage.removeItem(k)); refreshRecent(); toast('Reading history cleared.'); };
 $('#removeModel').onclick = async () => {
   kReset(); invalidateAudio();
-  try { await caches.delete('transformers-cache'); await caches.delete('kokoro-voices'); } catch {}
-  ls.del('tts:model:lite'); ls.del('tts:model:hd'); S.engine = 'device'; saveS(); stopAll(); updateEngineUI(); paintDownload(); toast('Downloaded voice removed.');
+  try { await caches.delete('transformers-cache'); await caches.delete('kokoro-voices'); await caches.delete('piper-voices'); } catch {}
+  try { Object.keys(localStorage).filter(k => k.startsWith('tts:model:')).forEach(k => localStorage.removeItem(k)); } catch {}
+  S.engine = 'device'; saveS(); fillVoicesP(); stopAll(); updateEngineUI(); paintDownload(); toast('Downloaded voice removed.');
 };
 
 /* ---------- previews ---------- */
@@ -1446,13 +1603,14 @@ const SAMPLE = 'Hi, this is how I sound. I can read your documents aloud.';
 async function preview(kind) {
   stopAll(); const my = ++runId;
   try {
-    if (kind === 'natural') {
-      toast('Generating sample…', false, 1500); await kInit(); if (my !== runId) return;
-      const a = await kGen(SAMPLE, S.voiceK, S.speed); if (my !== runId) return; await playBuffer(a);
+    if (kind === 'natural' || kind === 'piper') {
+      toast('Generating sample…', false, 1500); await kInit(kind); if (my !== runId) return;
+      const a = await kGen(SAMPLE, kind === 'piper' ? curVoiceP() : S.voiceK, S.speed); if (my !== runId) return; await playBuffer(a);
     } else { await utterOnce(SAMPLE); }
   } catch (e) { if (e.name !== 'Cancel') toast(e.message, true); }
 }
 $('#previewK').onclick = () => preview('natural');
+$('#previewP').onclick = () => preview('piper');
 $('#previewD').onclick = () => preview('device');
 
 /* ---------- contents ---------- */
@@ -1470,11 +1628,11 @@ let expCancel = false;
 $('#expCancel').onclick = () => { expCancel = true; kClear(); };
 $('#exportBtn').onclick = async () => {
   if (!doc) return;
-  if (!(K.ready || modelInstalled())) { toast('Download the natural voice first. Saving audio needs it.', true); return; }
+  if (!modelInstalled()) { toast('Download a natural voice first (Voice and settings). Saving audio needs it.', true); return; }
   $('#settings').close(); stopAll(); exporting = true; expCancel = false; invalidateAudio();
   const dlg = $('#expDlg'), bar = $('#expBar'), msg = $('#expMsg'); dlg.showModal(); bar.style.width = '0%'; msg.textContent = 'Loading the voice…';
   try {
-    await kInit();
+    await kInit(kindOf());
     // Generate bigger chunks, several at a time, using every worker.
     const groups = [];
     for (let i = 0; i < units.length;) { const e = groupAt(i, 280); const text = groupText(i, e); if (text) groups.push({ text, pause: Math.max(units[e - 1].pause, 140) }); i = e; }
@@ -1482,7 +1640,7 @@ $('#exportBtn').onclick = async () => {
     const runner = async () => {
       for (;;) {
         if (expCancel) return; const g = next++; if (g >= groups.length) return;
-        const a = await kGen(groups[g].text, S.voiceK, S.speed, g); sr = a.sr;
+        const a = await kGen(groups[g].text, curVoice(), S.speed, g); sr = a.sr;
         const pcm = new Int16Array(a.data.length); for (let k = 0; k < pcm.length; k++) pcm[k] = Math.max(-1, Math.min(1, a.data[k])) * 32767;
         out[g] = pcm; done++;
         const el = (performance.now() - t0) / 1000, eta = el / done * (groups.length - done);
@@ -1552,7 +1710,7 @@ document.documentElement.style.setProperty('--fs', (1.2 * S.size) + 'rem');
 buildDict(); pasteStat(); updateEngineUI(); refreshRecent();
 if ('speechSynthesis' in window) { speechSynthesis.onvoiceschanged = () => { if ($('#settings').open) fillVoicesD(); paintPos(); }; }
 // If the natural voice is already installed and in use, warm it up while the page is idle.
-if (S.engine === 'natural' && modelInstalled()) (window.requestIdleCallback || setTimeout)(() => kInit().catch(() => {}));
+if (isNeural() && modelInstalled()) (window.requestIdleCallback || setTimeout)(() => kInit().catch(() => {}));
 // Older versions installed an offline cache that could serve stale pages. Remove it.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
 if (window.caches) caches.delete('reader-v1').catch(() => {});
