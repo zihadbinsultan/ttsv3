@@ -417,7 +417,7 @@ self.onmessage = async (e) => {
 <script type="text/plain" id="pworker">
 importScripts('__ORT__/ort.wasm.min.js');
 const post = (m, t) => self.postMessage(m, t || []);
-let sess = null, cfg = null, ph = null, phOut = [], sr = 22050;
+let sess = null, cfg = null, ph = null, phOut = [], sr = 22050, modelBytes = null, urls = null, phCalls = 0, runs = 0;
 const GAIN = 1.25;
 
 async function fetchCached(url, label, expect) {
@@ -440,7 +440,17 @@ async function fetchCached(url, label, expect) {
   return blob;
 }
 
+async function makePh() {
+  ph = await createPiperPhonemize({ print: l => phOut.push(l), printErr: () => {}, locateFile: f => f.endsWith('.data') ? urls.du : f.endsWith('.wasm') ? urls.wu : f });
+  phCalls = 0;
+}
+async function makeSess() {
+  try { if (sess && sess.release) await sess.release(); } catch (_) {}
+  sess = await ort.InferenceSession.create(modelBytes, { executionProviders: ['wasm'], graphOptimizationLevel: 'all', enableCpuMemArena: false, enableMemPattern: false });
+  runs = 0;
+}
 function sentencesOf(text) {
+  if (++phCalls > 8) throw new Error('refresh');   // handled by the caller: a fresh phonemizer is made often so its memory never builds up
   phOut.length = 0;
   ph.callMain(['-l', cfg.espeak.voice, '--input', JSON.stringify([{ text }]), '--espeak_data', '/espeak-ng-data']);
   const out = [];
@@ -459,8 +469,8 @@ async function speak(ids, speed) {
     scales: new ort.Tensor('float32', Float32Array.from([cfg.inference.noise_scale, cfg.inference.length_scale / speed, cfg.inference.noise_w]))
   };
   if ((cfg.num_speakers || 1) > 1) f.sid = new ort.Tensor('int64', BigInt64Array.from([0n]));
-  const r = await sess.run(f);
-  return r.output.data;
+  const r = await sess.run(f); runs++;
+  return r.output.data.slice();
 }
 function trim(f) {
   const th = 0.01; let a = 0, b = f.length - 1;
@@ -487,10 +497,10 @@ self.onmessage = async (e) => {
       const modelBlob = await fetchCached(m.voiceUrl, 'voice', m.voiceBytes);
       const W = b => new Blob([b], { type: 'application/wasm' });
       const du = URL.createObjectURL(dataBlob), wu = URL.createObjectURL(W(phWasm)), ou = URL.createObjectURL(W(wasmBlob));
-      ph = await createPiperPhonemize({ print: l => phOut.push(l), printErr: () => {}, locateFile: f => f.endsWith('.data') ? du : f.endsWith('.wasm') ? wu : f });
+      urls = { du, wu }; await makePh();
       ort.env.wasm.numThreads = 1; ort.env.wasm.simd = true;
       ort.env.wasm.wasmPaths = { 'ort-wasm-simd.wasm': ou, 'ort-wasm-simd-threaded.wasm': ou, 'ort-wasm.wasm': ou, 'ort-wasm-threaded.wasm': ou };
-      sess = await ort.InferenceSession.create(new Uint8Array(await modelBlob.arrayBuffer()), { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
+      modelBytes = new Uint8Array(await modelBlob.arrayBuffer()); await makeSess();
       try { const s0 = sentencesOf('Ready.'); if (s0[0]) await speak(s0[0], 1); } catch (_) {}   // warm-up
       post({ t: 'ready' });
     } catch (err) {
@@ -498,8 +508,18 @@ self.onmessage = async (e) => {
     }
   } else if (m.t === 'gen') {
     try {
-      const t0 = performance.now(); const arrs = [];
-      for (const ids of sentencesOf(m.text)) { if (ids.length < 5) continue; arrs.push(trim(await speak(ids, m.speed))); }
+      const t0 = performance.now(); let arrs = [];
+      const attempt = async () => {
+        const out = [];
+        if (phCalls >= 8) await makePh();
+        if (runs >= 120) await makeSess();
+        for (const ids of sentencesOf(m.text)) { if (ids.length < 5) continue; out.push(trim(await speak(ids, m.speed))); }
+        return out;
+      };
+      try { arrs = await attempt(); }
+      catch (e1) {   // the engine hit a memory problem: rebuild both parts and try this text once more
+        await makePh(); await makeSess(); arrs = await attempt();
+      }
       if (!arrs.length) arrs.push(new Float32Array(Math.round(sr * 0.05)));
       const gap = Math.round(sr * Math.min(0.2, 0.17 / Math.max(m.speed, 0.8))); let n = 0; arrs.forEach((a, k) => n += a.length + (k ? gap : 0));
       const f = new Float32Array(n); let o = 0; arrs.forEach((a, k) => { if (k) o += gap; f.set(a, o); o += a.length; });
@@ -1026,7 +1046,13 @@ function startWorker(primary, kind) {
         const j = rec.job; rec.job = null; rec.busy = false;
         if (j) { K.jobs++; const data = new Float32Array(m.buf); K.rtf.push((data.length / m.sr) / (m.ms / 1000)); if (K.rtf.length > 8) K.rtf.shift(); j.res({ data, sr: m.sr }); }
         dispatch();
-      } else if (m.t === 'genError') { const j = rec.job; rec.job = null; rec.busy = false; if (j) j.rej(new Error(m.msg)); dispatch(); }
+      } else if (m.t === 'genError') {
+        const j = rec.job; rec.job = null; rec.busy = false;
+        const crash = /out of bounds|unreachable|memory|abort|RuntimeError/i.test(m.msg);
+        if (j) { if (crash && !j.retried) { j.retried = true; K.queue.unshift(j); } else j.rej(new Error(crash ? 'The voice engine needs a restart. Tap play to continue.' : m.msg)); }
+        if (crash && (!j || j.retried === true && !K.queue.includes(j))) { setTimeout(() => { kReset(); invalidateAudio(); }, 0); }
+        dispatch();
+      }
     };
     w.onerror = () => rej(new Error('The natural voice failed to start. Check your connection and try again.'));
     if (piper) {
